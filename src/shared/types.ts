@@ -1,3 +1,5 @@
+export type AgentEngine = "claude" | "opencode" | "cursor" | "codex" | "qwen" | "droid";
+
 export type CliOptions = {
   task?: string[];
   init?: boolean;
@@ -58,6 +60,48 @@ export type RunPrdRequest = {
   githubLabel?: string;
 };
 
+export type TasksNextQuery = {
+  prd?: string;
+  yaml?: string;
+  github?: string;
+  githubLabel?: string;
+};
+
+export type TaskPreview = {
+  source: "markdown" | "yaml" | "github";
+  text: string;
+  line?: number;
+  url?: string;
+  number?: number;
+};
+
+export type TasksNextResponse =
+  | { status: "ok"; task: TaskPreview }
+  | { status: "empty" | "error"; source: "markdown" | "yaml" | "github"; error?: string };
+
+export type TasksCompleteRequest = {
+  task: string;
+  prd?: string;
+  yaml?: string;
+  github?: string;
+  githubLabel?: string;
+};
+
+export type TasksCompleteResponse =
+  | {
+      status: "updated" | "already-complete" | "not-found";
+      source: "markdown" | "yaml" | "github";
+      task: string;
+      updated?: string;
+      issueNumber?: number;
+    }
+  | {
+      status: "error";
+      source: "markdown" | "yaml" | "github";
+      task: string;
+      error: string;
+    };
+
 export type ConfigRulesRequest = {
   rule: string;
 };
@@ -65,4 +109,5 @@ export type ConfigRulesRequest = {
 export type ServerRequestBody =
   | RunSingleRequest
   | RunPrdRequest
+  | TasksCompleteRequest
   | ConfigRulesRequest;

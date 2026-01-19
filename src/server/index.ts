@@ -1,6 +1,15 @@
 import { packageVersion } from "../shared/version";
-import type { ConfigRulesRequest, ErrorResponse, HealthResponse, VersionResponse } from "../shared/types";
+import type {
+  ConfigRulesRequest,
+  ErrorResponse,
+  HealthResponse,
+  TasksCompleteRequest,
+  TasksNextQuery,
+  TasksNextResponse,
+  VersionResponse,
+} from "../shared/types";
 import { addConfigRule, initRalphyConfig, readRalphyConfig } from "../core/config";
+import { completeTask, getNextTask } from "../core/tasks/source";
 
 type ServerOptions = {
   port?: number;
@@ -25,12 +34,35 @@ const readRequestBody = async (request: Request) => {
   }
 };
 
+const parseTasksQuery = (request: Request): TasksNextQuery => {
+  const { searchParams } = new URL(request.url);
+  const getValue = (key: string) => {
+    const value = searchParams.get(key);
+    return value && value.trim().length > 0 ? value : undefined;
+  };
+
+  return {
+    prd: getValue("prd"),
+    yaml: getValue("yaml"),
+    github: getValue("github"),
+    githubLabel: getValue("githubLabel"),
+  };
+};
+
 const isConfigRulesRequest = (body: unknown): body is ConfigRulesRequest =>
   Boolean(
     body &&
       typeof body === "object" &&
       "rule" in body &&
       typeof (body as { rule: unknown }).rule === "string",
+  );
+
+const isTasksCompleteRequest = (body: unknown): body is TasksCompleteRequest =>
+  Boolean(
+    body &&
+      typeof body === "object" &&
+      "task" in body &&
+      typeof (body as { task: unknown }).task === "string",
   );
 
 const createHandler = (cwd: string) => async (request: Request) => {
@@ -64,6 +96,36 @@ const createHandler = (cwd: string) => async (request: Request) => {
     }
 
     const result = await addConfigRule(body.rule, cwd);
+    return jsonResponse(result);
+  }
+
+  if (request.method === "GET" && pathname === "/v1/tasks/next") {
+    const query = parseTasksQuery(request);
+    const result = await getNextTask({
+      prd: query.prd,
+      yaml: query.yaml,
+      github: query.github,
+      githubLabel: query.githubLabel,
+      cwd,
+    });
+    const payload: TasksNextResponse = result;
+    return jsonResponse(payload);
+  }
+
+  if (request.method === "POST" && pathname === "/v1/tasks/complete") {
+    const body = await readRequestBody(request);
+    if (!isTasksCompleteRequest(body) || body.task.trim().length === 0) {
+      const payload: ErrorResponse = { error: "Invalid request" };
+      return jsonResponse(payload, 400);
+    }
+
+    const result = await completeTask(body.task, {
+      prd: body.prd,
+      yaml: body.yaml,
+      github: body.github,
+      githubLabel: body.githubLabel,
+      cwd,
+    });
     return jsonResponse(result);
   }
 

@@ -1,4 +1,4 @@
-export type AgentEngine = "claude" | "opencode" | "cursor" | "codex" | "qwen" | "droid";
+import type { AgentEngine } from "../../shared/types";
 
 export type AgentCommandOptions = {
   codexLastMessagePath?: string;
