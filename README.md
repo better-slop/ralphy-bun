@@ -2,6 +2,8 @@
 
 WIP: converts michaelshimeles' ralphy to bun
 
+built with [ralphy](https://github.com/michaelshimeles/ralphy). wait am i self hosting ralphy-bun with ralpy? lmao
+
 To install dependencies:
 
 ```bash
