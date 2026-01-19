@@ -252,6 +252,8 @@ const selectDispatchTarget = (args: CliArgs): DispatchTarget => {
     maxIterations: args.maxIterations,
     maxRetries: args.maxRetries,
     retryDelay: args.retryDelay,
+    parallel: args.parallel,
+    maxParallel: args.maxParallel,
     branchPerTask: args.branchPerTask,
     baseBranch: args.baseBranch,
     createPr: args.createPr,

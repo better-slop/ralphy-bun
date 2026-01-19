@@ -151,14 +151,16 @@ const createHandler = (
       return jsonResponse(payload, 400);
     }
 
-    const result = await prdRunner({
-      prd: body.prd,
+      const result = await prdRunner({
+        prd: body.prd,
         yaml: body.yaml,
         github: body.github,
         githubLabel: body.githubLabel,
         maxIterations: body.maxIterations,
         maxRetries: body.maxRetries,
         retryDelay: body.retryDelay,
+        parallel: body.parallel,
+        maxParallel: body.maxParallel,
         branchPerTask: body.branchPerTask,
         baseBranch: body.baseBranch,
         createPr: body.createPr,
@@ -169,6 +171,7 @@ const createHandler = (
         engine: body.engine,
         cwd,
       });
+
     return jsonResponse(result);
   }
 

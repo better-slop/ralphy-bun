@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { checkPrdRequirements, runPrd } from "../src/core/prd";
 import type { PrdRunTask, RunPrdRequest } from "../src/shared/types";
@@ -113,6 +113,39 @@ const createBranchManager = () => {
       },
       cleanup: async () => {
         calls.push("cleanup");
+      },
+    },
+  };
+};
+
+const createWorktreeManager = () => {
+  const calls: string[] = [];
+  const worktrees: string[] = [];
+  return {
+    calls,
+    worktrees,
+    manager: {
+      createWorktree: async ({ group, taskSourcePath }: { group: string | number; taskSourcePath?: string }) => {
+        const path = await mkdtemp(join(tmpdir(), "ralphy-parallel-"));
+        worktrees.push(path);
+        calls.push(`create:${group}`);
+        let copiedTaskSource: string | undefined;
+        if (taskSourcePath) {
+          const contents = await Bun.file(taskSourcePath).text();
+          copiedTaskSource = join(path, basename(taskSourcePath));
+          await Bun.write(copiedTaskSource, contents);
+        }
+        return {
+          group: String(group),
+          branch: `ralphy/parallel/${group}`,
+          path,
+          taskSourcePath,
+          copiedTaskSource,
+        };
+      },
+      cleanup: async () => {
+        calls.push("cleanup");
+        await Promise.all(worktrees.map((path) => rm(path, { recursive: true, force: true })));
       },
     },
   };
@@ -538,6 +571,144 @@ test("runPrd returns error when completion fails", async () => {
       task: "Ship it",
       usage: { inputTokens: 1, outputTokens: 1 },
     });
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("runPrd executes parallel groups with max-parallel", async () => {
+  const cwd = await createWorkspace();
+  const { calls, manager } = createWorktreeManager();
+  const yamlPath = join(cwd, "tasks.yaml");
+  const progressPath = join(cwd, ".ralphy", "progress.txt");
+
+  let active = 0;
+  let maxActive = 0;
+
+  const delay = () =>
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, 20);
+    });
+
+  try {
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    await mkdir(join(cwd, ".ralphy"), { recursive: true });
+    await Bun.write(progressPath, "# Ralphy Progress Log\n\n");
+    await Bun.write(
+      yamlPath,
+      [
+        "tasks:",
+        "  - title: Task A",
+        "    completed: false",
+        "    parallel_group: 1",
+        "  - title: Task B",
+        "    completed: false",
+        "    parallel_group: 1",
+        "  - title: Task C",
+        "    completed: false",
+        "    parallel_group: 2",
+        "  - title: Task D",
+        "    completed: false",
+        "    parallel_group: 2",
+      ].join("\n"),
+    );
+
+    const result = await runPrd(
+      { cwd, yaml: "tasks.yaml", parallel: true, maxParallel: 1 },
+      {
+        runner: async ({ task }) => {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          await delay();
+          active -= 1;
+          return {
+            status: "ok",
+            engine: "claude",
+            attempts: 1,
+            response: `Done ${task}`,
+            usage: { inputTokens: 1, outputTokens: 1 },
+            stdout: "ok",
+            stderr: "",
+            exitCode: 0,
+          };
+        },
+        completeTask: async () => ({ status: "updated", source: "yaml", task: "task" }),
+        worktreeManagerFactory: () => manager,
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.tasks.map((task) => task.task)).toEqual(["Task A", "Task B", "Task C", "Task D"]);
+      expect(result.completed).toBe(4);
+    }
+    expect(maxActive).toBe(1);
+    expect(calls.filter((call) => call.startsWith("create:")).length).toBe(2);
+    expect(calls.at(-1)).toBe("cleanup");
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("runPrd allows multiple parallel workers", async () => {
+  const cwd = await createWorkspace();
+  const { manager } = createWorktreeManager();
+  const yamlPath = join(cwd, "tasks.yaml");
+
+  let active = 0;
+  let maxActive = 0;
+
+  const delay = () =>
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, 20);
+    });
+
+  try {
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    await mkdir(join(cwd, ".ralphy"), { recursive: true });
+    await Bun.write(join(cwd, ".ralphy", "progress.txt"), "# Ralphy Progress Log\n\n");
+    await Bun.write(
+      yamlPath,
+      [
+        "tasks:",
+        "  - title: Task A",
+        "    completed: false",
+        "    parallel_group: 1",
+        "  - title: Task C",
+        "    completed: false",
+        "    parallel_group: 2",
+      ].join("\n"),
+    );
+
+    const result = await runPrd(
+      { cwd, yaml: "tasks.yaml", parallel: true, maxParallel: 2 },
+      {
+        runner: async ({ task }) => {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          await delay();
+          active -= 1;
+          return {
+            status: "ok",
+            engine: "claude",
+            attempts: 1,
+            response: `Done ${task}`,
+            usage: { inputTokens: 1, outputTokens: 1 },
+            stdout: "ok",
+            stderr: "",
+            exitCode: 0,
+          };
+        },
+        completeTask: async () => ({ status: "updated", source: "yaml", task: "task" }),
+        worktreeManagerFactory: () => manager,
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.completed).toBe(2);
+    }
+    expect(maxActive).toBe(2);
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

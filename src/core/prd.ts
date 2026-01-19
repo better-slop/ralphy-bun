@@ -11,9 +11,12 @@ import type {
 } from "../shared/types";
 import { createBranchPerTaskManager } from "./git/branch";
 import { createPullRequest } from "./git/pr";
+import { createWorktreeManager } from "./parallel/worktrees";
 import { logTaskHistory } from "./progress";
 import { runSingleTask } from "./single";
+import { parseMarkdownTasks } from "./tasks/markdown";
 import { completeTask, getNextTask } from "./tasks/source";
+import { parseYamlTasks } from "./tasks/yaml";
 
 const pathExists = async (path: string) => {
   try {
@@ -74,6 +77,7 @@ type RunPrdDeps = {
   completeTask?: typeof completeTask;
   branchManagerFactory?: typeof createBranchPerTaskManager;
   createPullRequest?: typeof createPullRequest;
+  worktreeManagerFactory?: typeof createWorktreeManager;
 };
 
 export const checkPrdRequirements = async (
@@ -139,6 +143,319 @@ const buildFailureTask = (task: string, source: PrdRunTask["source"], attempts: 
   error,
 });
 
+type ParallelTask = {
+  text: string;
+  source: PrdRunTask["source"];
+  line?: number;
+  group: string;
+  index: number;
+};
+
+type ParallelGroup = {
+  group: string;
+  tasks: ParallelTask[];
+};
+
+type ParallelTasksResult =
+  | { status: "ok"; source: PrdRunTask["source"]; groups: ParallelGroup[]; total: number; truncated: boolean }
+  | { status: "empty"; source: PrdRunTask["source"] }
+  | { status: "error"; message: string };
+
+const resolveMaxParallel = (value: number | undefined, groupCount: number) => {
+  if (!Number.isFinite(value)) {
+    return Math.max(1, groupCount);
+  }
+  return Math.max(1, Math.min(groupCount, Math.floor(value ?? 1)));
+};
+
+const groupParallelTasks = (tasks: ParallelTask[]): ParallelGroup[] => {
+  const groups = new Map<string, ParallelTask[]>();
+  tasks.forEach((task) => {
+    const key = task.group;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.push(task);
+      return;
+    }
+    groups.set(key, [task]);
+  });
+  return Array.from(groups.entries()).map(([group, groupedTasks]) => ({
+    group,
+    tasks: groupedTasks,
+  }));
+};
+
+const loadParallelTasks = async (
+  options: RunPrdRequest,
+  cwd: string,
+  maxIterations: number,
+): Promise<ParallelTasksResult> => {
+  if (options.github) {
+    return { status: "error", message: "Parallel mode does not support GitHub task sources" };
+  }
+
+  const sourcePath = resolveTaskSourcePath(options, cwd);
+  const file = Bun.file(sourcePath);
+  if (!(await file.exists())) {
+    return { status: "error", message: `Missing task source file: ${sourcePath}` };
+  }
+
+  const contents = await file.text();
+  const limit = Number.isFinite(maxIterations) ? Math.max(0, maxIterations) : Number.POSITIVE_INFINITY;
+  const tasks: ParallelTask[] = [];
+
+  if (options.yaml) {
+    const parsed = parseYamlTasks(contents).filter((task) => !task.completed);
+    const limited = limit === Number.POSITIVE_INFINITY ? parsed : parsed.slice(0, limit);
+    let index = 0;
+    limited.forEach((task) => {
+      tasks.push({
+        text: task.title,
+        source: "yaml",
+        line: task.line,
+        group: String(task.parallelGroup),
+        index,
+      });
+      index += 1;
+    });
+    if (tasks.length === 0) {
+      return { status: "empty", source: "yaml" };
+    }
+    return {
+      status: "ok",
+      source: "yaml",
+      groups: groupParallelTasks(tasks),
+      total: parsed.length,
+      truncated: limited.length < parsed.length,
+    };
+  }
+
+  const parsed = parseMarkdownTasks(contents).filter((task) => !task.completed);
+  const limited = limit === Number.POSITIVE_INFINITY ? parsed : parsed.slice(0, limit);
+  let index = 0;
+  limited.forEach((task) => {
+    tasks.push({
+      text: task.text,
+      source: "markdown",
+      line: task.line,
+      group: "default",
+      index,
+    });
+    index += 1;
+  });
+
+  if (tasks.length === 0) {
+    return { status: "empty", source: "markdown" };
+  }
+
+  return {
+    status: "ok",
+    source: "markdown",
+    groups: groupParallelTasks(tasks),
+    total: parsed.length,
+    truncated: limited.length < parsed.length,
+  };
+};
+
+const createSerialQueue = () => {
+  let chain = Promise.resolve();
+  return async <T>(work: () => Promise<T>): Promise<T> => {
+    const next = chain.then(work, work);
+    chain = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  };
+};
+
+type ParallelGroupResult = {
+  tasks: Array<PrdRunTask & { index: number }>;
+  completed: number;
+  usage: AgentUsageTotals;
+  failure?: { stage: "agent" | "complete"; message: string; task: string };
+};
+
+type ParallelRunResult = {
+  tasks: PrdRunTask[];
+  completed: number;
+  iterations: number;
+  usage: AgentUsageTotals;
+  failure?: { stage: "agent" | "complete"; message: string; task: string };
+  stopped: "no-tasks" | "max-iterations";
+};
+
+const buildTaskSourceOverride = (
+  task: ParallelTask,
+  record: { copiedTaskSource?: string; path: string },
+  options: RunPrdRequest,
+) => {
+  const path = record.copiedTaskSource ?? resolveTaskSourcePath(options, record.path);
+  if (task.source === "yaml") {
+    return { cwd: record.path, yaml: path };
+  }
+  return { cwd: record.path, prd: path };
+};
+
+const runParallelGroup = async (
+  group: ParallelGroup,
+  options: RunPrdRequest,
+  cwd: string,
+  runner: typeof runSingleTask,
+  complete: typeof completeTask,
+  worktreeManager: ReturnType<typeof createWorktreeManager>,
+): Promise<ParallelGroupResult> => {
+  const taskSourcePath = resolveTaskSourcePath(options, cwd);
+  const record = await worktreeManager.createWorktree({
+    group: group.group,
+    taskSourcePath,
+  });
+  const usage = createUsageTotals();
+  const results: Array<PrdRunTask & { index: number }> = [];
+  let completed = 0;
+
+  for (const task of group.tasks) {
+    const result = await runner({
+      task: task.text,
+      engine: options.engine,
+      skipTests: options.skipTests,
+      skipLint: options.skipLint,
+      autoCommit: options.autoCommit,
+      maxRetries: options.maxRetries,
+      retryDelay: options.retryDelay,
+      cwd: record.path,
+    });
+
+    if (result.status !== "ok") {
+      const message = result.status === "dry-run" ? "Dry run not supported for PRD execution" : result.error;
+      const attempts = result.status === "dry-run" ? 0 : result.attempts;
+      await logTaskHistory(record.path, task.text, "failed");
+      results.push({ ...buildFailureTask(task.text, task.source, attempts, message), index: task.index });
+      return {
+        tasks: results,
+        completed,
+        usage,
+        failure: { stage: "agent", message, task: task.text },
+      };
+    }
+
+    addUsageTotals(usage, result.usage);
+    await logTaskHistory(record.path, task.text, "completed");
+    results.push({ ...buildSuccessTask(task.text, task.source, result.attempts, result.response), index: task.index });
+    completed += 1;
+
+    const completion = await complete(task.text, buildTaskSourceOverride(task, record, options));
+    if (completion.status === "updated" || completion.status === "already-complete") {
+      continue;
+    }
+    const message = "Task not found in source";
+    return {
+      tasks: results,
+      completed,
+      usage,
+      failure: { stage: "complete", message, task: task.text },
+    };
+  }
+
+  return { tasks: results, completed, usage };
+};
+
+const runParallelTasks = async (
+  options: RunPrdRequest,
+  cwd: string,
+  maxIterations: number,
+  deps: RunPrdDeps,
+): Promise<ParallelRunResult | RunPrdResponse> => {
+  if (options.branchPerTask || options.createPr || options.draftPr) {
+    return {
+      status: "error",
+      stage: "pr",
+      message: "Parallel mode does not support branch-per-task or PR creation",
+      iterations: 0,
+      tasks: [],
+      usage: createUsageTotals(),
+    };
+  }
+
+  const parallelTasks = await loadParallelTasks(options, cwd, maxIterations);
+  if (parallelTasks.status === "error") {
+    return {
+      status: "error",
+      stage: "task-source",
+      message: parallelTasks.message,
+      iterations: 0,
+      tasks: [],
+      usage: createUsageTotals(),
+    };
+  }
+  if (parallelTasks.status === "empty") {
+    return {
+      tasks: [],
+      completed: 0,
+      iterations: 0,
+      usage: createUsageTotals(),
+      stopped: "no-tasks",
+    };
+  }
+
+  const worktreeFactory = deps.worktreeManagerFactory ?? createWorktreeManager;
+  const worktreeManager = worktreeFactory({ cwd, baseBranch: options.baseBranch });
+  const queue = [...parallelTasks.groups];
+  const maxParallel = resolveMaxParallel(options.maxParallel, queue.length);
+  const serial = createSerialQueue();
+  const runner = deps.runner ?? runSingleTask;
+  const complete = deps.completeTask ?? completeTask;
+  const results: ParallelGroupResult[] = [];
+
+  const worker = async () => {
+    while (queue.length > 0) {
+      const group = queue.shift();
+      if (!group) {
+        return;
+      }
+      const result = await runParallelGroup(group, options, cwd, runner, complete, worktreeManager);
+      await serial(async () => {
+        results.push(result);
+      });
+    }
+  };
+
+  try {
+    await Promise.all(Array.from({ length: maxParallel }, () => worker()));
+  } finally {
+    await worktreeManager.cleanup();
+  }
+
+  const tasks = results.flatMap((result) => result.tasks).sort((a, b) => a.index - b.index);
+  const usage = createUsageTotals();
+  let completed = 0;
+  let failure: ParallelGroupResult["failure"] | undefined;
+  results.forEach((result) => {
+    addUsageTotals(usage, result.usage);
+    completed += result.completed;
+    if (!failure && result.failure) {
+      failure = result.failure;
+    }
+  });
+
+  const iterations = tasks.length;
+  const stopped = parallelTasks.truncated ? "max-iterations" : "no-tasks";
+
+  if (failure) {
+    return {
+      status: "error",
+      stage: failure.stage,
+      message: failure.message,
+      iterations,
+      tasks,
+      task: failure.task,
+      usage,
+    };
+  }
+
+  return { tasks, completed, iterations, usage, stopped };
+};
+
 export const runPrd = async (
   options: RunPrdRequest & { cwd?: string },
   deps: RunPrdDeps = {},
@@ -163,6 +480,21 @@ export const runPrd = async (
       stopped: "max-iterations",
       tasks,
       usage,
+    };
+  }
+
+  if (options.parallel) {
+    const parallelResult = await runParallelTasks(options, cwd, maxIterations, deps);
+    if ("status" in parallelResult) {
+      return parallelResult;
+    }
+    return {
+      status: "ok",
+      iterations: parallelResult.iterations,
+      completed: parallelResult.completed,
+      stopped: parallelResult.stopped,
+      tasks: parallelResult.tasks,
+      usage: parallelResult.usage,
     };
   }
 

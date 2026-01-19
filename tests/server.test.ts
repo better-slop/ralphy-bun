@@ -201,18 +201,21 @@ test("POST /v1/run/prd executes prd flow", async () => {
     expect(request).toEqual({
       prd: "PRD.md",
       maxIterations: 2,
-        maxRetries: 1,
-        retryDelay: 3,
-        branchPerTask: true,
-        baseBranch: "main",
-        createPr: undefined,
-        draftPr: undefined,
-        skipTests: true,
-        skipLint: true,
-        autoCommit: false,
-        engine: "opencode",
-        cwd: workingDir,
-      });
+      maxRetries: 1,
+      retryDelay: 3,
+      parallel: undefined,
+      maxParallel: undefined,
+      branchPerTask: true,
+      baseBranch: "main",
+      createPr: undefined,
+      draftPr: undefined,
+      skipTests: true,
+      skipLint: true,
+      autoCommit: false,
+      engine: "opencode",
+      cwd: workingDir,
+    });
+
     return {
       status: "ok",
       iterations: 1,

@@ -25,4 +25,5 @@
 - 2026-01-19: Completed Sprint 6 Task 2 create/draft PR flow with gh integration + tests.
 - 2026-01-19: Completed Sprint 6 Task 3 PR creation arg tests + PRD dry-run handling test.
 - 2026-01-19: Completed Sprint 7 Task 1 worktree creation helper + tests.
+- 2026-01-19: Completed Sprint 7 Task 2 parallel execution pooling with max-parallel + tests.
 
