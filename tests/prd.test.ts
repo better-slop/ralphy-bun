@@ -254,6 +254,48 @@ test("runPrd returns error when retries are exhausted", async () => {
   }
 });
 
+test("runPrd returns error when runner returns dry-run", async () => {
+  const cwd = await createWorkspace();
+
+  try {
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    await mkdir(join(cwd, ".ralphy"), { recursive: true });
+    await Bun.write(join(cwd, "PRD.md"), "- [ ] Task");
+    await Bun.write(join(cwd, ".ralphy", "progress.txt"), "# Ralphy Progress Log\n\n");
+
+    const result = await runPrd(createRunOptions(cwd), {
+      getNextTask: async () => ({ status: "ok", task: { source: "markdown", text: "Ship it" } }),
+      runner: async () => ({
+        status: "dry-run",
+        engine: "claude",
+        prompt: "Prompt",
+      }),
+    });
+
+    expect(result).toEqual({
+      status: "error",
+      stage: "agent",
+      message: "Dry run not supported for PRD execution",
+      iterations: 1,
+      tasks: [
+        {
+          task: "Ship it",
+          source: "markdown",
+          status: "failed",
+          attempts: 0,
+          error: "Dry run not supported for PRD execution",
+        },
+      ],
+      task: "Ship it",
+      usage: { inputTokens: 0, outputTokens: 0 },
+    });
+    const progress = await Bun.file(join(cwd, ".ralphy", "progress.txt")).text();
+    expect(progress).toContain("- [✗]");
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test("runPrd executes tasks sequentially and completes", async () => {
   const cwd = await createWorkspace();
   let taskIndex = 0;
