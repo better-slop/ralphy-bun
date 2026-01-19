@@ -20,6 +20,13 @@ export type AgentUsage = {
   durationMs?: number;
 };
 
+export type AgentUsageTotals = {
+  inputTokens: number;
+  outputTokens: number;
+  cost?: number;
+  durationMs?: number;
+};
+
 export type CliOptions = {
   task?: string[];
   init?: boolean;
@@ -148,10 +155,11 @@ export type RunPrdSuccess = {
   completed: number;
   stopped: "no-tasks" | "max-iterations";
   tasks: PrdRunTask[];
+  usage: AgentUsageTotals;
 };
 
 export type RunPrdFailure =
-  | { status: "error"; failures: PrdRequirementFailure[] }
+  | { status: "error"; failures: PrdRequirementFailure[]; usage?: AgentUsageTotals }
   | {
       status: "error";
       stage: "task-source" | "agent" | "complete";
@@ -159,6 +167,7 @@ export type RunPrdFailure =
       iterations: number;
       tasks: PrdRunTask[];
       task?: string;
+      usage: AgentUsageTotals;
     };
 
 export type RunPrdResponse = RunPrdSuccess | RunPrdFailure;

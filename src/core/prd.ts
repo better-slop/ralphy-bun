@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { stat } from "node:fs/promises";
 import type {
+  AgentUsageTotals,
   PrdRequirement,
   PrdRequirementFailure,
   PrdRequirementsResult,
@@ -8,6 +9,7 @@ import type {
   RunPrdRequest,
   RunPrdResponse,
 } from "../shared/types";
+import { logTaskHistory } from "./progress";
 import { runSingleTask } from "./single";
 import { completeTask, getNextTask } from "./tasks/source";
 
@@ -42,6 +44,22 @@ const ensureMaxIterations = (value?: number) => {
     return Number.POSITIVE_INFINITY;
   }
   return Math.max(0, value);
+};
+
+const createUsageTotals = (): AgentUsageTotals => ({
+  inputTokens: 0,
+  outputTokens: 0,
+});
+
+const addUsageTotals = (totals: AgentUsageTotals, usage: AgentUsageTotals) => {
+  totals.inputTokens += usage.inputTokens;
+  totals.outputTokens += usage.outputTokens;
+  if (usage.cost !== undefined) {
+    totals.cost = (totals.cost ?? 0) + usage.cost;
+  }
+  if (usage.durationMs !== undefined) {
+    totals.durationMs = (totals.durationMs ?? 0) + usage.durationMs;
+  }
 };
 
 type RunPrdDeps = {
@@ -125,6 +143,7 @@ export const runPrd = async (
   const cwd = options.cwd ?? process.cwd();
   const maxIterations = ensureMaxIterations(options.maxIterations);
   const tasks: PrdRunTask[] = [];
+  const usage = createUsageTotals();
   let iterations = 0;
   let completed = 0;
 
@@ -135,6 +154,7 @@ export const runPrd = async (
       completed,
       stopped: "max-iterations",
       tasks,
+      usage,
     };
   }
 
@@ -152,6 +172,7 @@ export const runPrd = async (
         completed,
         stopped: "no-tasks",
         tasks,
+        usage,
       };
     }
     if (next.status === "error") {
@@ -161,6 +182,7 @@ export const runPrd = async (
         message: next.error ?? "Task source error",
         iterations,
         tasks,
+        usage,
       };
     }
 
@@ -180,6 +202,8 @@ export const runPrd = async (
     });
 
     if (result.status === "ok") {
+      addUsageTotals(usage, result.usage);
+      await logTaskHistory(cwd, taskText, "completed");
       tasks.push(buildSuccessTask(taskText, taskSource, result.attempts, result.response));
       completed += 1;
       const completion = await complete(taskText, taskSourceOptions);
@@ -197,6 +221,7 @@ export const runPrd = async (
           iterations,
           tasks,
           task: taskText,
+          usage,
         };
       }
       return {
@@ -206,12 +231,14 @@ export const runPrd = async (
         iterations,
         tasks,
         task: taskText,
+        usage,
       };
     }
 
     const errorMessage =
       result.status === "dry-run" ? "Dry run not supported for PRD execution" : result.error;
     const attempts = result.status === "dry-run" ? 0 : result.attempts;
+    await logTaskHistory(cwd, taskText, "failed");
     tasks.push(buildFailureTask(taskText, taskSource, attempts, errorMessage));
     return {
       status: "error",
@@ -220,6 +247,7 @@ export const runPrd = async (
       iterations,
       tasks,
       task: taskText,
+      usage,
     };
   }
 
@@ -229,5 +257,6 @@ export const runPrd = async (
     completed,
     stopped: "max-iterations",
     tasks,
+    usage,
   };
 };

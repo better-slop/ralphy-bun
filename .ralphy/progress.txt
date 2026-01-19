@@ -19,3 +19,5 @@
 - 2026-01-19: Completed Sprint 4 Task 4 snapshot tests for prompt assembly and agent command construction.
 - 2026-01-19: Completed Sprint 5 Task 1 PRD requirement checks + tests.
 - 2026-01-19: Completed Sprint 5 Task 2 sequential PRD loop with CLI/server wiring + tests.
+- 2026-01-19: Completed Sprint 5 Task 3 progress logging + usage totals for PRD runs + tests.
+

@@ -126,6 +126,7 @@ test("runPrd stops immediately when max iterations is zero", async () => {
       completed: 0,
       stopped: "max-iterations",
       tasks: [],
+      usage: { inputTokens: 0, outputTokens: 0 },
     });
     expect(runnerCalls).toBe(0);
   } finally {
@@ -140,7 +141,9 @@ test("runPrd executes tasks sequentially and completes", async () => {
 
   try {
     await mkdir(join(cwd, ".git"), { recursive: true });
+    await mkdir(join(cwd, ".ralphy"), { recursive: true });
     await Bun.write(join(cwd, "PRD.md"), "- [ ] Task");
+    await Bun.write(join(cwd, ".ralphy", "progress.txt"), "# Ralphy Progress Log\n\n");
 
     const result = await runPrd(createRunOptions(cwd, { maxIterations: 2 }), {
       getNextTask: async () => {
@@ -163,7 +166,7 @@ test("runPrd executes tasks sequentially and completes", async () => {
           engine: "claude",
           attempts: 1,
           response: "Done",
-          usage: { inputTokens: 1, outputTokens: 1 },
+          usage: { inputTokens: 1, outputTokens: 1, cost: 0.02, durationMs: 1200 },
           stdout: "ok",
           stderr: "",
           exitCode: 0,
@@ -178,7 +181,11 @@ test("runPrd executes tasks sequentially and completes", async () => {
       completed: 1,
       stopped: "no-tasks",
       tasks: completedTasks,
+      usage: { inputTokens: 1, outputTokens: 1, cost: 0.02, durationMs: 1200 },
     });
+    const progress = await Bun.file(join(cwd, ".ralphy", "progress.txt")).text();
+    expect(progress).toContain("- [✓]");
+    expect(progress).toContain("Ship it");
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
@@ -226,6 +233,7 @@ test("runPrd returns error when completion fails", async () => {
         },
       ],
       task: "Ship it",
+      usage: { inputTokens: 1, outputTokens: 1 },
     });
   } finally {
     await rm(cwd, { recursive: true, force: true });

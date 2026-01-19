@@ -223,6 +223,7 @@ test("POST /v1/run/prd executes prd flow", async () => {
           response: "Done",
         },
       ],
+      usage: { inputTokens: 0, outputTokens: 0 },
     };
   };
   const { server, baseUrl } = startServer({ runPrd });
@@ -258,6 +259,7 @@ test("POST /v1/run/prd executes prd flow", async () => {
           response: "Done",
         },
       ],
+      usage: { inputTokens: 0, outputTokens: 0 },
     });
   } finally {
     await server.stop();
