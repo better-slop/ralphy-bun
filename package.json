@@ -8,7 +8,7 @@
     "format": "bunx --bun oxfmt .",
     "test": "bun test \"**/*.test.ts\"",
     "build:types": "bun build --outdir=dist --target=bun src/index.ts src/cli.ts",
-    "build:bin": "mkdir -p dist/bin && bun build --compile --outfile=dist/bin/ralphy-bun src/cli.ts",
+    "build:bin": "bun run scripts/build-binary.ts",
     "build": "bun run build:types && bun run build:bin"
   },
   "dependencies": {
