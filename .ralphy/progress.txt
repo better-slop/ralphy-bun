@@ -7,4 +7,5 @@
 - 2026-01-19: Completed Sprint 2 Task 1 config init logic + tests.
 - 2026-01-19: Completed Sprint 2 Task 2 config show/read + add-rule update + tests.
 - 2026-01-19: Completed Sprint 2 Task 3 CLI config flag wiring + server endpoints + tests.
+- 2026-01-19: Added config fallback init test coverage for missing manifests.
 

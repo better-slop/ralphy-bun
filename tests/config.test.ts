@@ -58,6 +58,17 @@ test("creates config and progress files for new project", async () => {
   expect(progressContents).toBe("# Ralphy Progress Log\n\n");
 });
 
+test("creates config with unknown project when no manifests", async () => {
+  const result = await initRalphyConfig({ cwd: workingDir });
+  const configContents = await readFile(result.paths.configPath);
+
+  expect(result.status).toBe("created");
+  expect(configContents).toContain('language: "Unknown"');
+  expect(configContents).toContain('test: ""');
+  expect(configContents).toContain('lint: ""');
+  expect(configContents).toContain('build: ""');
+});
+
 test("returns exists when overwrite is declined", async () => {
   const ralphyDir = join(workingDir, ".ralphy");
   await Bun.write(join(workingDir, "package.json"), JSON.stringify({ name: "demo" }));
