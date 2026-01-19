@@ -113,6 +113,19 @@ export type RunPrdRequest = {
   githubLabel?: string;
 };
 
+export type PrdRequirement = "git" | "dependencies" | "task-source";
+
+export type PrdRequirementFailure = {
+  requirement: PrdRequirement;
+  message: string;
+};
+
+export type PrdRequirementsResult =
+  | { status: "ok" }
+  | { status: "error"; failures: PrdRequirementFailure[] };
+
+export type RunPrdResponse = PrdRequirementsResult;
+
 export type TasksNextQuery = {
   prd?: string;
   yaml?: string;

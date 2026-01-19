@@ -17,3 +17,4 @@
 - 2026-01-19: Completed Sprint 4 Task 2 agent runner adapters + tests.
 - 2026-01-19: Completed Sprint 4 Task 3 single-task run flow with retries + tests.
 - 2026-01-19: Completed Sprint 4 Task 4 snapshot tests for prompt assembly and agent command construction.
+- 2026-01-19: Completed Sprint 5 Task 1 PRD requirement checks + tests.

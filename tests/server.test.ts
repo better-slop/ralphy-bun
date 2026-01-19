@@ -24,12 +24,18 @@ afterEach(async () => {
   }
 });
 
-const startServer = (options: { runSingleTask?: ServerOptions["runSingleTask"] } = {}): ServerHandle => {
+const startServer = (
+  options: {
+    runSingleTask?: ServerOptions["runSingleTask"];
+    runPrd?: ServerOptions["runPrd"];
+  } = {},
+): ServerHandle => {
   const server = createServer({
     hostname: "127.0.0.1",
     port: 0,
     cwd: workingDir,
     runSingleTask: options.runSingleTask,
+    runPrd: options.runPrd,
   });
   return {
     server,
@@ -185,6 +191,26 @@ test("POST /v1/run/single executes single task", async () => {
       stderr: "",
       exitCode: 0,
     });
+  } finally {
+    await server.stop();
+  }
+});
+
+test("POST /v1/run/prd executes prd flow", async () => {
+  const runPrd: ServerOptions["runPrd"] = async () => ({
+    status: "ok",
+  });
+  const { server, baseUrl } = startServer({ runPrd });
+
+  try {
+    const response = await fetch(`${baseUrl}/v1/run/prd`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prd: "PRD.md" }),
+    });
+    expect(response.status).toBe(200);
+    const payload = await readJson(response);
+    expect(payload).toEqual({ status: "ok" });
   } finally {
     await server.stop();
   }

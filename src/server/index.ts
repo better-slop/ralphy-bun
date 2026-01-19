@@ -3,6 +3,7 @@ import type {
   ConfigRulesRequest,
   ErrorResponse,
   HealthResponse,
+  RunPrdRequest,
   RunSingleRequest,
   TasksCompleteRequest,
   TasksNextQuery,
@@ -10,6 +11,7 @@ import type {
   VersionResponse,
 } from "../shared/types";
 import { addConfigRule, initRalphyConfig, readRalphyConfig } from "../core/config";
+import { runPrd } from "../core/prd";
 import { runSingleTask } from "../core/single";
 import { completeTask, getNextTask } from "../core/tasks/source";
 
@@ -18,6 +20,7 @@ type ServerOptions = {
   hostname?: string;
   cwd?: string;
   runSingleTask?: typeof runSingleTask;
+  runPrd?: typeof runPrd;
 };
 
 const jsonResponse = (payload: unknown, status = 200) =>
@@ -76,8 +79,14 @@ const isRunSingleRequest = (body: unknown): body is RunSingleRequest =>
       typeof (body as { task: unknown }).task === "string",
   );
 
-const createHandler = (cwd: string, runner: typeof runSingleTask) =>
-  async (request: Request) => {
+const isRunPrdRequest = (body: unknown): body is RunPrdRequest =>
+  Boolean(body && typeof body === "object");
+
+const createHandler = (
+  cwd: string,
+  runner: typeof runSingleTask,
+  prdRunner: typeof runPrd,
+) => async (request: Request) => {
   const { pathname } = new URL(request.url);
 
   if (request.method === "GET" && pathname === "/v1/health") {
@@ -135,6 +144,23 @@ const createHandler = (cwd: string, runner: typeof runSingleTask) =>
     return jsonResponse(result);
   }
 
+  if (request.method === "POST" && pathname === "/v1/run/prd") {
+    const body = await readRequestBody(request);
+    if (!isRunPrdRequest(body)) {
+      const payload: ErrorResponse = { error: "Invalid request" };
+      return jsonResponse(payload, 400);
+    }
+
+    const result = await prdRunner({
+      prd: body.prd,
+      yaml: body.yaml,
+      github: body.github,
+      githubLabel: body.githubLabel,
+      cwd,
+    });
+    return jsonResponse(result);
+  }
+
   if (request.method === "POST" && pathname === "/v1/tasks/complete") {
     const body = await readRequestBody(request);
     if (!isTasksCompleteRequest(body) || body.task.trim().length === 0) {
@@ -159,10 +185,11 @@ const createHandler = (cwd: string, runner: typeof runSingleTask) =>
 export const createServer = (options: ServerOptions = {}) => {
   const cwd = options.cwd ?? process.cwd();
   const runner = options.runSingleTask ?? runSingleTask;
+  const prdRunner = options.runPrd ?? runPrd;
 
   return Bun.serve({
     port: options.port,
     hostname: options.hostname,
-    fetch: createHandler(cwd, runner),
+    fetch: createHandler(cwd, runner, prdRunner),
   });
 };
