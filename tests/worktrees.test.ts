@@ -90,3 +90,40 @@ test("creates unique worktree path when directory exists", async () => {
     await rm(cwd, { recursive: true, force: true });
   }
 });
+
+test("cleanup preserves dirty worktrees when requested", async () => {
+  const cwd = await createWorkspace();
+
+  try {
+    const prdPath = join(cwd, "PRD.md");
+    await Bun.write(prdPath, "- [ ] Ship it");
+
+    const { runner, calls } = createRunner({
+      "rev-parse --abbrev-ref HEAD": "main\n",
+      "branch --list": "main\n",
+      "status --porcelain": " M PRD.md\n",
+    });
+    const manager = createWorktreeManager({ cwd, runner });
+    const record = await manager.createWorktree({ group: "Group A", taskSourcePath: "PRD.md" });
+
+    await manager.cleanup({ preserveDirty: true });
+    expect(calls.map((call) => call.args.join(" "))).toEqual([
+      "rev-parse --abbrev-ref HEAD",
+      "branch --list",
+      `worktree add -b ${record.branch} ${record.path} main`,
+      "status --porcelain",
+    ]);
+
+    await manager.cleanup({ preserveDirty: false });
+    expect(calls.map((call) => call.args.join(" "))).toEqual([
+      "rev-parse --abbrev-ref HEAD",
+      "branch --list",
+      `worktree add -b ${record.branch} ${record.path} main`,
+      "status --porcelain",
+      `worktree remove --force ${record.path}`,
+      `branch -D ${record.branch}`,
+    ]);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});

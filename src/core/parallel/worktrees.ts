@@ -18,8 +18,9 @@ export type WorktreeCreateOptions = {
 
 export type WorktreeManager = {
   createWorktree: (options: WorktreeCreateOptions) => Promise<WorktreeRecord>;
-  cleanup: (options?: { removeBranches?: boolean }) => Promise<void>;
+  cleanup: (options?: { removeBranches?: boolean; preserveDirty?: boolean }) => Promise<void>;
 };
+
 
 export type WorktreeManagerOptions = {
   cwd: string;
@@ -63,6 +64,15 @@ const getCurrentBranch = async (runner: GitRunner, cwd: string) => {
 const listBranches = async (runner: GitRunner, cwd: string) => {
   const { stdout } = await runner(["branch", "--list"], { cwd });
   return parseBranchList(stdout);
+};
+
+const isWorktreeDirty = async (runner: GitRunner, cwd: string) => {
+  try {
+    const { stdout } = await runner(["status", "--porcelain"], { cwd });
+    return stdout.trim().length > 0;
+  } catch {
+    return true;
+  }
 };
 
 const buildBranchName = (group: string, existing: string[]) => {
@@ -153,32 +163,44 @@ export const createWorktreeManager = (options: WorktreeManagerOptions): Worktree
     return record;
   };
 
-  const cleanup = async (options?: { removeBranches?: boolean }) => {
-    const errors: Error[] = [];
-    const removeBranches = options?.removeBranches ?? true;
+const cleanup = async (options?: { removeBranches?: boolean; preserveDirty?: boolean }) => {
+  const errors: Error[] = [];
+  const removeBranches = options?.removeBranches ?? true;
+  const preserveDirty = options?.preserveDirty ?? false;
+  const remaining: WorktreeRecord[] = [];
 
-    for (const record of created) {
+  for (const record of created) {
+    if (preserveDirty) {
+      const dirty = await isWorktreeDirty(runner, record.path);
+      if (dirty) {
+        remaining.push(record);
+        continue;
+      }
+    }
+
+    try {
+      await runner(["worktree", "remove", "--force", record.path], { cwd });
+    } catch (error) {
+      errors.push(error instanceof Error ? error : new Error("Worktree removal failed"));
+    }
+
+    if (removeBranches) {
       try {
-        await runner(["worktree", "remove", "--force", record.path], { cwd });
+        await runner(["branch", "-D", record.branch], { cwd });
       } catch (error) {
-        errors.push(error instanceof Error ? error : new Error("Worktree removal failed"));
-      }
-
-      if (removeBranches) {
-        try {
-          await runner(["branch", "-D", record.branch], { cwd });
-        } catch (error) {
-          errors.push(error instanceof Error ? error : new Error("Branch removal failed"));
-        }
+        errors.push(error instanceof Error ? error : new Error("Branch removal failed"));
       }
     }
+  }
 
-    created.length = 0;
+  created.length = 0;
+  created.push(...remaining);
 
-    if (errors.length > 0) {
-      throw new Error(errors.map((error) => error.message).join("; "));
-    }
-  };
+  if (errors.length > 0) {
+    throw new Error(errors.map((error) => error.message).join("; "));
+  }
+};
+
 
   return { createWorktree, cleanup };
 };

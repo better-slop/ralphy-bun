@@ -377,6 +377,32 @@ const createSerialQueue = () => {
   };
 };
 
+const registerCleanupSignals = (cleanup: () => Promise<void>) => {
+  let handled = false;
+  const handler = (signal: string) => {
+    if (handled) {
+      return;
+    }
+    handled = true;
+    void cleanup().finally(() => {
+      if (signal === "SIGINT") {
+        process.exitCode = 130;
+      }
+      if (signal === "SIGTERM") {
+        process.exitCode = 143;
+      }
+    });
+  };
+
+  process.on("SIGINT", handler);
+  process.on("SIGTERM", handler);
+
+  return () => {
+    process.off("SIGINT", handler);
+    process.off("SIGTERM", handler);
+  };
+};
+
 type ParallelGroupResult = {
   group: string;
   branches: string[];
@@ -652,9 +678,14 @@ const runParallelTasks = async (
     }
   };
 
+  const releaseSignals = registerCleanupSignals(async () => {
+    await worktreeManager.cleanup({ removeBranches: false, preserveDirty: true });
+  });
+
   try {
     await Promise.all(Array.from({ length: maxParallel }, () => worker()));
   } finally {
+    releaseSignals();
     await worktreeManager.cleanup({ removeBranches: false });
   }
 
