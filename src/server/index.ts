@@ -151,20 +151,22 @@ const createHandler = (
       return jsonResponse(payload, 400);
     }
 
-    const result = await prdRunner({
-      prd: body.prd,
-      yaml: body.yaml,
-      github: body.github,
-      githubLabel: body.githubLabel,
-      maxIterations: body.maxIterations,
-      maxRetries: body.maxRetries,
-      retryDelay: body.retryDelay,
-      skipTests: body.skipTests,
-      skipLint: body.skipLint,
-      autoCommit: body.autoCommit,
-      engine: body.engine,
-      cwd,
-    });
+      const result = await prdRunner({
+        prd: body.prd,
+        yaml: body.yaml,
+        github: body.github,
+        githubLabel: body.githubLabel,
+        maxIterations: body.maxIterations,
+        maxRetries: body.maxRetries,
+        retryDelay: body.retryDelay,
+        branchPerTask: body.branchPerTask,
+        baseBranch: body.baseBranch,
+        skipTests: body.skipTests,
+        skipLint: body.skipLint,
+        autoCommit: body.autoCommit,
+        engine: body.engine,
+        cwd,
+      });
     return jsonResponse(result);
   }
 

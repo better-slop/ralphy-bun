@@ -96,6 +96,28 @@ const createRunOptions = (
   cwd,
 });
 
+const createBranchManager = () => {
+  const calls: string[] = [];
+  return {
+    calls,
+    manager: {
+      prepare: async () => {
+        calls.push("prepare");
+      },
+      checkoutForTask: async (task: string) => {
+        calls.push(`checkout:${task}`);
+        return `ralphy/${task}`;
+      },
+      finishTask: async () => {
+        calls.push("finish");
+      },
+      cleanup: async () => {
+        calls.push("cleanup");
+      },
+    },
+  };
+};
+
 test("runPrd stops immediately when max iterations is zero", async () => {
   const cwd = await createWorkspace();
   let runnerCalls = 0;
@@ -284,6 +306,39 @@ test("runPrd executes tasks sequentially and completes", async () => {
     const progress = await Bun.file(join(cwd, ".ralphy", "progress.txt")).text();
     expect(progress).toContain("- [✓]");
     expect(progress).toContain("Ship it");
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("runPrd uses branch manager when enabled", async () => {
+  const cwd = await createWorkspace();
+  const { calls, manager } = createBranchManager();
+
+  try {
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    await mkdir(join(cwd, ".ralphy"), { recursive: true });
+    await Bun.write(join(cwd, "PRD.md"), "- [ ] Task");
+    await Bun.write(join(cwd, ".ralphy", "progress.txt"), "# Ralphy Progress Log\n\n");
+
+    const result = await runPrd(createRunOptions(cwd, { maxIterations: 1, branchPerTask: true }), {
+      getNextTask: async () => ({ status: "ok", task: { source: "markdown", text: "Ship it" } }),
+      runner: async () => ({
+        status: "ok",
+        engine: "claude",
+        attempts: 1,
+        response: "Done",
+        usage: { inputTokens: 1, outputTokens: 1 },
+        stdout: "ok",
+        stderr: "",
+        exitCode: 0,
+      }),
+      completeTask: async () => ({ status: "updated", source: "markdown", task: "Ship it" }),
+      branchManagerFactory: () => manager,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(calls).toEqual(["prepare", "checkout:Ship it", "finish", "cleanup"]);
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

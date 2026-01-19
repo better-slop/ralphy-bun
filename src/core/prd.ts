@@ -9,6 +9,7 @@ import type {
   RunPrdRequest,
   RunPrdResponse,
 } from "../shared/types";
+import { createBranchPerTaskManager } from "./git/branch";
 import { logTaskHistory } from "./progress";
 import { runSingleTask } from "./single";
 import { completeTask, getNextTask } from "./tasks/source";
@@ -66,6 +67,7 @@ type RunPrdDeps = {
   runner?: typeof runSingleTask;
   getNextTask?: typeof getNextTask;
   completeTask?: typeof completeTask;
+  branchManagerFactory?: typeof createBranchPerTaskManager;
 };
 
 export const checkPrdRequirements = async (
@@ -162,72 +164,109 @@ export const runPrd = async (
   const runner = deps.runner ?? runSingleTask;
   const nextTask = deps.getNextTask ?? getNextTask;
   const complete = deps.completeTask ?? completeTask;
+  const branchManagerFactory = deps.branchManagerFactory ?? createBranchPerTaskManager;
+  const branchManager = options.branchPerTask
+    ? branchManagerFactory({ cwd, baseBranch: options.baseBranch })
+    : null;
 
-  while (iterations < maxIterations) {
-    const next = await nextTask(taskSourceOptions);
-    if (next.status === "empty") {
-      return {
-        status: "ok",
-        iterations,
-        completed,
-        stopped: "no-tasks",
-        tasks,
-        usage,
-      };
-    }
-    if (next.status === "error") {
-      return {
-        status: "error",
-        stage: "task-source",
-        message: next.error ?? "Task source error",
-        iterations,
-        tasks,
-        usage,
-      };
-    }
+  if (branchManager) {
+    await branchManager.prepare();
+  }
 
-    const taskText = next.task.text;
-    const taskSource = next.task.source;
-    iterations += 1;
-
-    const result = await runner({
-      task: taskText,
-      engine: options.engine,
-      skipTests: options.skipTests,
-      skipLint: options.skipLint,
-      autoCommit: options.autoCommit,
-      maxRetries: options.maxRetries,
-      retryDelay: options.retryDelay,
-      cwd,
-    });
-
-    if (result.status === "ok") {
-      addUsageTotals(usage, result.usage);
-      await logTaskHistory(cwd, taskText, "completed");
-      tasks.push(buildSuccessTask(taskText, taskSource, result.attempts, result.response));
-      completed += 1;
-      const completion = await complete(taskText, taskSourceOptions);
-      if (completion.status === "updated" || completion.status === "already-complete") {
-        if (iterations >= maxIterations) {
-          break;
-        }
-        continue;
+  try {
+    while (iterations < maxIterations) {
+      const next = await nextTask(taskSourceOptions);
+      if (next.status === "empty") {
+        return {
+          status: "ok",
+          iterations,
+          completed,
+          stopped: "no-tasks",
+          tasks,
+          usage,
+        };
       }
-      if (completion.status === "not-found") {
+      if (next.status === "error") {
+        return {
+          status: "error",
+          stage: "task-source",
+          message: next.error ?? "Task source error",
+          iterations,
+          tasks,
+          usage,
+        };
+      }
+
+      const taskText = next.task.text;
+      const taskSource = next.task.source;
+      iterations += 1;
+
+      if (branchManager) {
+        await branchManager.checkoutForTask(taskText);
+      }
+
+      let result: Awaited<ReturnType<typeof runSingleTask>>;
+
+      try {
+        result = await runner({
+          task: taskText,
+          engine: options.engine,
+          skipTests: options.skipTests,
+          skipLint: options.skipLint,
+          autoCommit: options.autoCommit,
+          maxRetries: options.maxRetries,
+          retryDelay: options.retryDelay,
+          cwd,
+        });
+      } finally {
+        if (branchManager) {
+          await branchManager.finishTask();
+        }
+      }
+
+      if (result.status === "ok") {
+        addUsageTotals(usage, result.usage);
+        await logTaskHistory(cwd, taskText, "completed");
+        tasks.push(buildSuccessTask(taskText, taskSource, result.attempts, result.response));
+        completed += 1;
+        const completion = await complete(taskText, taskSourceOptions);
+        if (completion.status === "updated" || completion.status === "already-complete") {
+          if (iterations >= maxIterations) {
+            break;
+          }
+          continue;
+        }
+        if (completion.status === "not-found") {
+          return {
+            status: "error",
+            stage: "complete",
+            message: "Task not found in source",
+            iterations,
+            tasks,
+            task: taskText,
+            usage,
+          };
+        }
         return {
           status: "error",
           stage: "complete",
-          message: "Task not found in source",
+          message: completion.status === "error" ? completion.error : "Task completion failed",
           iterations,
           tasks,
           task: taskText,
           usage,
         };
       }
+
+      const errorMessage =
+        result.status === "dry-run" ? "Dry run not supported for PRD execution" : result.error;
+      const attempts = result.status === "dry-run" ? 0 : result.attempts;
+      await logTaskHistory(cwd, taskText, "failed");
+      tasks.push(buildFailureTask(taskText, taskSource, attempts, errorMessage));
       return {
         status: "error",
-        stage: "complete",
-        message: completion.status === "error" ? completion.error : "Task completion failed",
+        stage: "agent",
+        message: errorMessage,
         iterations,
         tasks,
         task: taskText,
@@ -235,28 +274,17 @@ export const runPrd = async (
       };
     }
 
-    const errorMessage =
-      result.status === "dry-run" ? "Dry run not supported for PRD execution" : result.error;
-    const attempts = result.status === "dry-run" ? 0 : result.attempts;
-    await logTaskHistory(cwd, taskText, "failed");
-    tasks.push(buildFailureTask(taskText, taskSource, attempts, errorMessage));
     return {
-      status: "error",
-      stage: "agent",
-      message: errorMessage,
+      status: "ok",
       iterations,
+      completed,
+      stopped: "max-iterations",
       tasks,
-      task: taskText,
       usage,
     };
+  } finally {
+    if (branchManager) {
+      await branchManager.cleanup();
+    }
   }
-
-  return {
-    status: "ok",
-    iterations,
-    completed,
-    stopped: "max-iterations",
-    tasks,
-    usage,
-  };
 };

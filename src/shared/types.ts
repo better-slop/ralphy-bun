@@ -123,6 +123,8 @@ export type RunPrdRequest = {
   maxIterations?: number;
   maxRetries?: number;
   retryDelay?: number;
+  branchPerTask?: boolean;
+  baseBranch?: string;
   skipTests?: boolean;
   skipLint?: boolean;
   autoCommit?: boolean;
