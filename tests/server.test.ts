@@ -1,4 +1,7 @@
-import { test, expect } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createServer } from "../src/server";
 import { packageVersion } from "../src/shared/version";
 
@@ -7,12 +10,32 @@ type ServerHandle = {
   baseUrl: string;
 };
 
+let workingDir = "";
+
+beforeEach(async () => {
+  workingDir = await mkdtemp(join(tmpdir(), "ralphy-server-"));
+});
+
+afterEach(async () => {
+  if (workingDir) {
+    await rm(workingDir, { recursive: true, force: true });
+  }
+});
+
 const startServer = (): ServerHandle => {
-  const server = createServer({ hostname: "127.0.0.1", port: 0 });
+  const server = createServer({ hostname: "127.0.0.1", port: 0, cwd: workingDir });
   return {
     server,
     baseUrl: `http://${server.hostname}:${server.port}`,
   };
+};
+
+const readJson = async <T>(response: Response) => response.json() as Promise<T>;
+
+const configFilesExist = async () => {
+  const configFile = Bun.file(join(workingDir, ".ralphy", "config.yaml"));
+  const progressFile = Bun.file(join(workingDir, ".ralphy", "progress.txt"));
+  return (await configFile.exists()) && (await progressFile.exists());
 };
 
 test("GET /v1/health returns ok with version", async () => {
@@ -21,7 +44,7 @@ test("GET /v1/health returns ok with version", async () => {
   try {
     const response = await fetch(`${baseUrl}/v1/health`);
     expect(response.status).toBe(200);
-    const payload = await response.json();
+    const payload = await readJson(response);
     expect(payload).toEqual({
       status: "ok",
       version: packageVersion,
@@ -37,10 +60,70 @@ test("GET /v1/version returns version", async () => {
   try {
     const response = await fetch(`${baseUrl}/v1/version`);
     expect(response.status).toBe(200);
-    const payload = await response.json();
+    const payload = await readJson(response);
     expect(payload).toEqual({
       version: packageVersion,
     });
+  } finally {
+    await server.stop();
+  }
+});
+
+test("POST /v1/config/init creates config files", async () => {
+  const { server, baseUrl } = startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/v1/config/init`, { method: "POST" });
+    expect(response.status).toBe(200);
+    const payload = await readJson<{ status: string }>(response);
+    expect(payload.status).toBe("created");
+    expect(await configFilesExist()).toBe(true);
+  } finally {
+    await server.stop();
+  }
+});
+
+test("GET /v1/config returns missing when no file", async () => {
+  const { server, baseUrl } = startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/v1/config`);
+    expect(response.status).toBe(200);
+    const payload = await readJson<{ status: string }>(response);
+    expect(payload.status).toBe("missing");
+  } finally {
+    await server.stop();
+  }
+});
+
+test("POST /v1/config/rules validates payload", async () => {
+  const { server, baseUrl } = startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/v1/config/rules`, { method: "POST" });
+    expect(response.status).toBe(400);
+    const payload = await readJson<{ error: string }>(response);
+    expect(payload).toEqual({ error: "Invalid request" });
+  } finally {
+    await server.stop();
+  }
+});
+
+test("POST /v1/config/rules adds rule", async () => {
+  const { server, baseUrl } = startServer();
+
+  try {
+    await fetch(`${baseUrl}/v1/config/init`, { method: "POST" });
+    const response = await fetch(`${baseUrl}/v1/config/rules`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ rule: "Keep it tight" }),
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await readJson<{ status: string; contents?: string }>(response);
+    expect(payload.status).toBe("added");
+    expect(payload.contents).toContain("Keep it tight");
   } finally {
     await server.stop();
   }
@@ -52,7 +135,7 @@ test("unknown routes return 404", async () => {
   try {
     const response = await fetch(`${baseUrl}/v1/nope`);
     expect(response.status).toBe(404);
-    const payload = await response.json();
+    const payload = await readJson(response);
     expect(payload).toEqual({ error: "Not Found" });
   } finally {
     await server.stop();

@@ -197,3 +197,69 @@ test("dispatches prd run when no task is provided", async () => {
   );
   expect(stopCalls).toHaveLength(1);
 });
+
+test("dispatches init to config init endpoint", async () => {
+  const { server, stopCalls } = createFakeServer();
+  const baseUrl = `http://${server.hostname}:${server.port}`;
+  const { fetcher, calls } = createFakeFetch({
+    [`${baseUrl}/v1/config/init`]: { body: { status: "created" } },
+  });
+
+  const result = await runCli(["--init"], {
+    createServer: () => server,
+    fetcher,
+  });
+
+  expect(result).not.toBeNull();
+  expect(result?.payload).toEqual({ status: "created" });
+  expect(calls).toHaveLength(2);
+  expect(calls[0]?.url).toBe(`${baseUrl}/v1/health`);
+  expect(calls[1]?.url).toBe(`${baseUrl}/v1/config/init`);
+  expect(calls[1]?.init?.method).toBe("POST");
+  expect(stopCalls).toHaveLength(1);
+});
+
+test("dispatches config to config endpoint", async () => {
+  const { server, stopCalls } = createFakeServer();
+  const baseUrl = `http://${server.hostname}:${server.port}`;
+  const { fetcher, calls } = createFakeFetch({
+    [`${baseUrl}/v1/health`]: { body: { status: "ok" } },
+    [`${baseUrl}/v1/config`]: { body: { status: "loaded" } },
+  });
+
+  const result = await runCli(["--config"], {
+    createServer: () => server,
+    fetcher,
+  });
+
+  expect(result).not.toBeNull();
+  expect(result?.payload).toEqual({ status: "loaded" });
+  expect(calls).toHaveLength(2);
+  expect(calls[0]?.url).toBe(`${baseUrl}/v1/health`);
+  expect(calls[1]?.url).toBe(`${baseUrl}/v1/config`);
+  expect(calls[1]?.init?.method).toBe("GET");
+  expect(stopCalls).toHaveLength(1);
+});
+
+test("dispatches add-rule to config rules endpoint", async () => {
+  const { server, stopCalls } = createFakeServer();
+  const baseUrl = `http://${server.hostname}:${server.port}`;
+  const { fetcher, calls } = createFakeFetch({
+    [`${baseUrl}/v1/health`]: { body: { status: "ok" } },
+    [`${baseUrl}/v1/config/rules`]: { body: { status: "added" } },
+  });
+
+  const result = await runCli(["--add-rule", "Keep it tight"], {
+    createServer: () => server,
+    fetcher,
+  });
+
+  expect(result).not.toBeNull();
+  expect(result?.payload).toEqual({ status: "added" });
+  expect(calls).toHaveLength(2);
+  expect(calls[0]?.url).toBe(`${baseUrl}/v1/health`);
+  expect(calls[1]?.url).toBe(`${baseUrl}/v1/config/rules`);
+  expect(calls[1]?.init?.method).toBe("POST");
+  expect(calls[1]?.init?.body).toBe(JSON.stringify({ rule: "Keep it tight" }));
+  expect(stopCalls).toHaveLength(1);
+});
