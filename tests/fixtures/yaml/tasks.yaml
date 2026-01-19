@@ -1,0 +1,6 @@
+tasks:
+  - title: First task
+    completed: false
+  - title: Second task
+    completed: true
+    parallel_group: 2

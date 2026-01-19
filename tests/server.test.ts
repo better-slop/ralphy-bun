@@ -129,6 +129,50 @@ test("POST /v1/config/rules adds rule", async () => {
   }
 });
 
+test("GET /v1/tasks/next returns next markdown task", async () => {
+  const { server, baseUrl } = startServer();
+  const prdPath = join(workingDir, "PRD.md");
+  await Bun.write(prdPath, "- [ ] First task\n- [x] Done task\n");
+
+  try {
+    const response = await fetch(`${baseUrl}/v1/tasks/next?prd=PRD.md`);
+    expect(response.status).toBe(200);
+    const payload = await readJson(response);
+    expect(payload).toEqual({
+      status: "ok",
+      task: { source: "markdown", text: "First task", line: 1 },
+    });
+  } finally {
+    await server.stop();
+  }
+});
+
+test("POST /v1/tasks/complete updates markdown task", async () => {
+  const { server, baseUrl } = startServer();
+  const prdPath = join(workingDir, "PRD.md");
+  await Bun.write(prdPath, "- [ ] First task\n");
+
+  try {
+    const response = await fetch(`${baseUrl}/v1/tasks/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ task: "First task", prd: "PRD.md" }),
+    });
+    expect(response.status).toBe(200);
+    const payload = await readJson(response);
+    expect(payload).toEqual({
+      status: "updated",
+      source: "markdown",
+      task: "First task",
+      updated: "- [x] First task\n",
+    });
+    const updated = await Bun.file(prdPath).text();
+    expect(updated).toBe("- [x] First task\n");
+  } finally {
+    await server.stop();
+  }
+});
+
 test("unknown routes return 404", async () => {
   const { server, baseUrl } = startServer();
 

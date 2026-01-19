@@ -1,15 +1,11 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import { completeYamlTask, parseYamlTasks } from "../src/core/tasks/yaml";
 
-test("parses yaml task list with completion state", () => {
-  const contents = [
-    "tasks:",
-    "  - title: First task",
-    "    completed: false",
-    "  - title: Second task",
-    "    completed: true",
-    "    parallel_group: 2",
-  ].join("\n");
+const readFixture = (name: string) => Bun.file(join(import.meta.dir, "fixtures", "yaml", name)).text();
+
+test("parses yaml task list with completion state", async () => {
+  const contents = await readFixture("tasks.yaml");
 
   const tasks = parseYamlTasks(contents);
 
@@ -30,25 +26,19 @@ test("parses yaml task list with completion state", () => {
   });
 });
 
-test("completes task by updating completed flag", () => {
-  const contents = [
-    "tasks:",
-    "  - title: First task",
-    "    completed: false",
-    "  - title: Second task",
-    "    parallel_group: 1",
-  ].join("\n");
+test("completes task by updating completed flag", async () => {
+  const contents = await readFixture("complete.yaml");
 
   const result = completeYamlTask(contents, "Second task");
 
   expect(result.status).toBe("updated");
   expect(result.updated).toBe(
-    "tasks:\n  - title: First task\n    completed: false\n  - title: Second task\n    completed: true\n    parallel_group: 1",
+    "tasks:\n  - title: First task\n    completed: false\n  - title: Second task\n    completed: true\n    parallel_group: 1\n",
   );
 });
 
-test("returns already-complete when task is done", () => {
-  const contents = ["tasks:", "  - title: First task", "    completed: true"].join("\n");
+test("returns already-complete when task is done", async () => {
+  const contents = await readFixture("done.yaml");
 
   const result = completeYamlTask(contents, "First task");
 

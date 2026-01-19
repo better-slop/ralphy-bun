@@ -11,3 +11,5 @@
 - 2026-01-19: Completed Sprint 3 Task 1 markdown PRD parsing + completion updates + tests.
 - 2026-01-19: Completed Sprint 3 Task 2 YAML task parsing + completion updates + tests.
 - 2026-01-19: Completed Sprint 3 Task 3 GitHub issue task source + tests.
+- 2026-01-19: Completed Sprint 3 Task 4 unified task source + tasks next/complete endpoints + tests.
+- 2026-01-19: Completed Sprint 3 Task 5 fixture-based task source tests.

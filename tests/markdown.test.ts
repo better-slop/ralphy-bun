@@ -1,13 +1,12 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import { completeMarkdownTask, parseMarkdownTasks } from "../src/core/tasks/markdown";
 
-test("parses markdown checkbox tasks", () => {
-  const contents = [
-    "- [ ] First task",
-    "  - [x] Done task",
-    "* [X] Upper task",
-    "Not a task",
-  ].join("\n");
+const readFixture = (name: string) =>
+  Bun.file(join(import.meta.dir, "fixtures", "markdown", name)).text();
+
+test("parses markdown checkbox tasks", async () => {
+  const contents = await readFixture("tasks.md");
 
   const tasks = parseMarkdownTasks(contents);
 
@@ -32,16 +31,13 @@ test("parses markdown checkbox tasks", () => {
   });
 });
 
-test("completes matching task and preserves indentation", () => {
-  const contents = [
-    "- [ ] First task",
-    "  - [ ] Second task",
-  ].join("\n");
+test("completes matching task and preserves indentation", async () => {
+  const contents = await readFixture("complete.md");
 
   const result = completeMarkdownTask(contents, "Second task");
 
   expect(result.status).toBe("updated");
-  expect(result.updated).toBe("- [ ] First task\n  - [x] Second task");
+  expect(result.updated).toBe("- [ ] First task\n  - [x] Second task\n");
 });
 
 test("returns already-complete when task is done", () => {

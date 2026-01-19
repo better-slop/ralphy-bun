@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import { completeGithubTask, listGithubTasks } from "../src/core/tasks/github";
 
 type RunnerCall = {
@@ -23,14 +24,14 @@ const createRunner = (responses: RunnerResponse[]) => {
   return { runner, calls };
 };
 
+const readFixture = (name: string) =>
+  Bun.file(join(import.meta.dir, "fixtures", "github", name)).text();
+
 test("lists github issues with label and repo", async () => {
   const { runner, calls } = createRunner([
     {
       args: [],
-      stdout: JSON.stringify([
-        { number: 12, title: "  First task ", url: "https://example.com/1" },
-        { number: 13, title: "Second task", url: "https://example.com/2" },
-      ]),
+      stdout: await readFixture("issue-list.json"),
     },
   ]);
 
@@ -60,12 +61,9 @@ test("completes open issue by title", async () => {
   const { runner, calls } = createRunner([
     {
       args: [],
-      stdout: JSON.stringify([
-        { number: 10, title: "Other task", url: "https://example.com/other" },
-        { number: 42, title: "Ship it", url: "https://example.com/ship" },
-      ]),
+      stdout: await readFixture("issue-list-mixed.json"),
     },
-    { args: [], stdout: JSON.stringify({ number: 42, title: "Ship it", state: "OPEN" }) },
+    { args: [], stdout: await readFixture("issue-view-open.json") },
     { args: [], stdout: "" },
   ]);
 
@@ -83,9 +81,9 @@ test("returns already-complete when issue closed", async () => {
   const { runner } = createRunner([
     {
       args: [],
-      stdout: JSON.stringify([{ number: 5, title: "Done task", url: "https://example.com/done" }]),
+      stdout: await readFixture("issue-list-single.json"),
     },
-    { args: [], stdout: JSON.stringify({ number: 5, title: "Done task", state: "closed" }) },
+    { args: [], stdout: await readFixture("issue-view-closed.json") },
   ]);
 
   const result = await completeGithubTask("Done task", { runner });
@@ -95,7 +93,7 @@ test("returns already-complete when issue closed", async () => {
 
 test("returns not-found when issue missing", async () => {
   const { runner } = createRunner([
-    { args: [], stdout: JSON.stringify([{ number: 1, title: "Other", url: "https://example.com" }]) },
+    { args: [], stdout: await readFixture("issue-list-single.json") },
   ]);
 
   const result = await completeGithubTask("Missing", { runner });
