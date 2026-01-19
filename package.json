@@ -2,8 +2,12 @@
   "name": "@better-slop/ralphy-bun",
   "module": "src/index.ts",
   "type": "module",
+  "dependencies": {
+    "yargs": "^17.7.2"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/yargs": "^17.0.35"
   },
   "peerDependencies": {
     "typescript": "^5"
