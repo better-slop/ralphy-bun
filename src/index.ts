@@ -1,3 +1,3 @@
-import { parseArgs } from "./cli";
+import { runCli } from "./cli";
 
-parseArgs(process.argv.slice(2));
+await runCli(process.argv.slice(2));

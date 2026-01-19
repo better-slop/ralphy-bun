@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { parseArgs } from "../src/cli";
+import { parseArgs, runCli } from "../src/cli";
 
 test("parses core flags", () => {
   const parsed = parseArgs([
@@ -80,4 +80,95 @@ test("allows version output without throwing", () => {
 
 test("allows help output without throwing", () => {
   expect(() => parseArgs(["--help"])).not.toThrow();
+});
+
+type FetchCall = {
+  url: string;
+  init?: RequestInit;
+};
+
+type FetchResponse = {
+  status?: number;
+  body?: unknown;
+};
+
+type Fetcher = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
+const createFakeFetch = (responses: Record<string, FetchResponse>) => {
+  const calls: FetchCall[] = [];
+  const fetcher: Fetcher = async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+    calls.push({ url, init });
+    const response = responses[url] ?? responses["*"] ?? {};
+    const status = response.status ?? 200;
+    const body = response.body ?? { ok: true };
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  return { fetcher, calls };
+};
+
+const createFakeServer = () => {
+  const stopCalls: string[] = [];
+  const server = {
+    hostname: "127.0.0.1",
+    port: 4321,
+    stop: async () => {
+      stopCalls.push("stop");
+    },
+  };
+  return { server, stopCalls };
+};
+
+test("dispatches dry-run to health endpoint", async () => {
+  const { server, stopCalls } = createFakeServer();
+  const baseUrl = `http://${server.hostname}:${server.port}`;
+  const { fetcher, calls } = createFakeFetch({
+    [`${baseUrl}/v1/health`]: { body: { status: "ok" } },
+  });
+
+  const result = await runCli(["--dry-run"], {
+    createServer: () => server,
+    fetcher,
+  });
+
+  expect(result).not.toBeNull();
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.url).toBe(`${baseUrl}/v1/health`);
+  expect(calls[0]?.init?.method).toBe("GET");
+  expect(stopCalls).toHaveLength(1);
+});
+
+test("dispatches positional tasks to single-run endpoint", async () => {
+  const { server, stopCalls } = createFakeServer();
+  const baseUrl = `http://${server.hostname}:${server.port}`;
+  const { fetcher, calls } = createFakeFetch({
+    [`${baseUrl}/v1/health`]: { body: { status: "ok" } },
+    [`${baseUrl}/v1/run/single`]: { body: { result: "done" } },
+  });
+
+  const result = await runCli(["ship", "it"], {
+    createServer: () => server,
+    fetcher,
+  });
+
+  expect(result).not.toBeNull();
+  expect(result?.payload).toEqual({ result: "done" });
+  expect(calls).toHaveLength(2);
+  expect(calls[0]?.url).toBe(`${baseUrl}/v1/health`);
+  expect(calls[1]?.url).toBe(`${baseUrl}/v1/run/single`);
+  expect(calls[1]?.init?.method).toBe("POST");
+  expect(calls[1]?.init?.body).toBe(JSON.stringify({ task: "ship it" }));
+  expect(stopCalls).toHaveLength(1);
 });

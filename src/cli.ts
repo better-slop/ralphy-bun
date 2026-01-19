@@ -1,6 +1,7 @@
 import yargs from "yargs/yargs";
 import type { Argv } from "yargs";
 import { packageVersion } from "./shared/version";
+import { createServer } from "./server";
 
 type CliArgs = {
   task?: string[];
@@ -172,10 +173,164 @@ const configureCli = (args: string[]): Argv<CliArgs> =>
     .version("version", "Show version number", packageVersion)
     .exitProcess(false);
 
+type DispatchTarget = {
+  method: "GET" | "POST";
+  path: string;
+  body?: unknown;
+};
+
+type DispatchResult = {
+  target: DispatchTarget;
+  status: number;
+  payload: unknown;
+};
+
+type ServerInstance = {
+  hostname: string;
+  port: number;
+  stop: () => Promise<void>;
+};
+
+type Fetcher = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
+type DispatchDependencies = {
+  createServer?: (options?: { port?: number; hostname?: string }) => ServerInstance;
+  fetcher?: Fetcher;
+  hostname?: string;
+  port?: number;
+};
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const isHelpOrVersion = (args: string[]) =>
+  args.includes("--help") || args.includes("-h") || args.includes("--version");
+
+const selectDispatchTarget = (args: CliArgs): DispatchTarget => {
+  if (args.dryRun) {
+    return { method: "GET", path: "/v1/health" };
+  }
+
+  if (args.init) {
+    return { method: "POST", path: "/v1/config/init" };
+  }
+
+  if (args.config) {
+    return { method: "GET", path: "/v1/config" };
+  }
+
+  if (typeof args.addRule === "string") {
+    return {
+      method: "POST",
+      path: "/v1/config/rules",
+      body: { rule: args.addRule },
+    };
+  }
+
+  const taskText = args.task?.join(" ");
+  if (taskText) {
+    return { method: "POST", path: "/v1/run/single", body: { task: taskText } };
+  }
+
+  return {
+    method: "POST",
+    path: "/v1/run/prd",
+    body: {
+      prd: args.prd,
+      yaml: args.yaml,
+      github: args.github,
+      githubLabel: args.githubLabel,
+    },
+  };
+};
+
+const waitForReady = async (fetcher: Fetcher, baseUrl: string) => {
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      const response = await fetcher(`${baseUrl}/v1/health`);
+      if (response.ok) {
+        return;
+      }
+      lastError = new Error(`Server responded with ${response.status}`);
+    } catch (error) {
+      if (error instanceof Error) {
+        lastError = error;
+      } else {
+        lastError = new Error("Server readiness failed");
+      }
+    }
+
+    await delay(50);
+  }
+
+  throw lastError ?? new Error("Server not ready");
+};
+
+const dispatchRequest = async (
+  target: DispatchTarget,
+  baseUrl: string,
+  fetcher: Fetcher,
+): Promise<DispatchResult> => {
+  const init: RequestInit = {
+    method: target.method,
+    headers: {
+      "content-type": "application/json",
+    },
+  };
+
+  if (target.body !== undefined) {
+    init.body = JSON.stringify(target.body);
+  }
+
+  const response = await fetcher(`${baseUrl}${target.path}`, init);
+  let payload: unknown = null;
+
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  return { target, status: response.status, payload };
+};
+
 export const buildCli = (args: string[]) => configureCli(args);
 
 export const parseArgs = (args: string[]) => buildCli(args).parseSync();
 
+export const runCli = async (
+  args: string[],
+  deps: DispatchDependencies = {},
+): Promise<DispatchResult | null> => {
+  if (isHelpOrVersion(args)) {
+    parseArgs(args);
+    return null;
+  }
+
+  const parsed = parseArgs(args);
+  const serverFactory = deps.createServer ?? createServer;
+  const fetcher = deps.fetcher ?? fetch;
+  const server = serverFactory({
+    hostname: deps.hostname ?? "127.0.0.1",
+    port: deps.port ?? 0,
+  });
+  const baseUrl = `http://${server.hostname}:${server.port}`;
+  const target = selectDispatchTarget(parsed);
+
+  try {
+    if (!(target.method === "GET" && target.path === "/v1/health")) {
+      await waitForReady(fetcher, baseUrl);
+    }
+    return await dispatchRequest(target, baseUrl, fetcher);
+  } finally {
+    await server.stop();
+  }
+};
+
 if (import.meta.main) {
-  parseArgs(process.argv.slice(2));
+  await runCli(process.argv.slice(2));
 }
