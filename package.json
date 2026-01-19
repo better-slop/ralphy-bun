@@ -3,9 +3,9 @@
   "module": "src/index.ts",
   "type": "module",
   "scripts": {
-    "lint": "oxlint --type-aware",
-    "lint:fix": "oxlint --type-aware --fix",
-    "format": "oxfmt .",
+    "lint": "bunx --bun oxlint --type-aware",
+    "lint:fix": "bunx --bun oxlint --type-aware --fix",
+    "format": "bunx --bun oxfmt .",
     "test": "bun test \"**/*.test.ts\"",
     "build:types": "bun build --outdir=dist --target=bun src/index.ts src/cli.ts",
     "build:bin": "mkdir -p dist/bin && bun build --compile --outfile=dist/bin/ralphy-bun src/cli.ts",
