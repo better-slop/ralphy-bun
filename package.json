@@ -1,5 +1,6 @@
 {
   "name": "@better-slop/ralphy-bun",
+  "version": "0.0.1",
   "module": "src/index.ts",
   "type": "module",
   "scripts": {
@@ -10,7 +11,8 @@
     "build:types": "bun build --outdir=dist --target=bun src/index.ts src/cli.ts",
     "build:bin": "bun run scripts/build-binary.ts",
     "build": "bun run build:types && bun run build:bin",
-    "build:copy": "cp ./dist/bin/ralphy-bun $HOME/.local/bin"
+    "build:copy": "cp ./dist/bin/ralphy-bun $HOME/.local/bin",
+    "build:full": "bun run build && bun run build:copy"
   },
   "dependencies": {
     "yargs": "^17.7.2"
