@@ -1,5 +1,6 @@
 import yargs from "yargs/yargs";
 import type { Argv } from "yargs";
+import { packageVersion } from "./shared/version";
 
 type CliArgs = {
   task?: string[];
@@ -36,11 +37,6 @@ type CliArgs = {
   verbose?: boolean;
   v?: boolean;
 };
-
-const packageJsonUrl = new URL("../package.json", import.meta.url);
-const packageJson = JSON.parse(await Bun.file(packageJsonUrl).text());
-const packageVersion =
-  typeof packageJson.version === "string" ? packageJson.version : "0.0.0";
 
 const configureCli = (args: string[]): Argv<CliArgs> =>
   yargs(args)
