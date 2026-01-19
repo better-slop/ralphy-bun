@@ -1,0 +1,90 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`buildAgentCommand snapshot 1`] = `
+[
+  {
+    "command": {
+      "args": [
+        "--dangerously-skip-permissions",
+        "--verbose",
+        "--output-format",
+        "stream-json",
+        "-p",
+        "do it",
+      ],
+      "command": "claude",
+    },
+    "engine": "claude",
+  },
+  {
+    "command": {
+      "args": [
+        "run",
+        "--format",
+        "json",
+        "do it",
+      ],
+      "command": "opencode",
+      "env": {
+        "OPENCODE_PERMISSION": "{"*":"allow"}",
+      },
+    },
+    "engine": "opencode",
+  },
+  {
+    "command": {
+      "args": [
+        "--print",
+        "--force",
+        "--output-format",
+        "stream-json",
+        "do it",
+      ],
+      "command": "agent",
+    },
+    "engine": "cursor",
+  },
+  {
+    "command": {
+      "args": [
+        "--output-format",
+        "stream-json",
+        "--approval-mode",
+        "yolo",
+        "-p",
+        "do it",
+      ],
+      "command": "qwen",
+    },
+    "engine": "qwen",
+  },
+  {
+    "command": {
+      "args": [
+        "exec",
+        "--output-format",
+        "stream-json",
+        "--auto",
+        "medium",
+        "do it",
+      ],
+      "command": "droid",
+    },
+    "engine": "droid",
+  },
+  {
+    "command": {
+      "args": [
+        "exec",
+        "--full-auto",
+        "--json",
+        "--output-last-message",
+        "last.txt",
+        "do it",
+      ],
+      "command": "codex",
+    },
+    "engine": "codex",
+  },
+]
+`;

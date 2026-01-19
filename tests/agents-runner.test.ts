@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import type { AgentEngine } from "../src/shared/types";
 import { buildAgentCommand, runAgent } from "../src/core/agents/runner";
+import type { AgentCommandOptions } from "../src/core/agents/runner";
 
 type SpawnOptions = Parameters<typeof Bun.spawn>[1];
 
@@ -72,6 +74,24 @@ test("buildAgentCommand creates codex command with last message path", () => {
   const command = buildAgentCommand("codex", "prompt", { codexLastMessagePath: "last.txt" });
   expect(command.command).toBe("codex");
   expect(command.args).toEqual(["exec", "--full-auto", "--json", "--output-last-message", "last.txt", "prompt"]);
+});
+
+test("buildAgentCommand snapshot", () => {
+  const cases = [
+    { engine: "claude", prompt: "do it" },
+    { engine: "opencode", prompt: "do it" },
+    { engine: "cursor", prompt: "do it" },
+    { engine: "qwen", prompt: "do it" },
+    { engine: "droid", prompt: "do it" },
+    { engine: "codex", prompt: "do it", options: { codexLastMessagePath: "last.txt" } },
+  ] satisfies Array<{ engine: AgentEngine; prompt: string; options?: AgentCommandOptions }>;
+
+  const snapshot = cases.map(({ engine, prompt, options }) => ({
+    engine,
+    command: buildAgentCommand(engine, prompt, options),
+  }));
+
+  expect(snapshot).toMatchSnapshot();
 });
 
 test("runAgent uses spawn and merges env", async () => {

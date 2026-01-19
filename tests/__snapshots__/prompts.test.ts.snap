@@ -1,0 +1,32 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`builds deterministic prompt snapshot 1`] = `
+"@<cwd>/.ralphy/progress.txt
+
+## Project Context
+Project: Demo
+Language: TypeScript
+
+## Rules (you MUST follow these)
+Ship fast
+
+## Boundaries
+Do NOT modify these files/directories:
+docs/**
+
+## Task
+Snapshot this
+
+## Instructions
+1. Implement the task described above
+2. Write tests for the feature.
+3. Run tests and ensure they pass before proceeding.
+4. Run linting and ensure it passes before proceeding.
+5. Append your progress to <cwd>/.ralphy/progress.txt.
+6. Commit your changes with a descriptive message.
+ONLY WORK ON A SINGLE TASK.
+Do not proceed if tests fail.
+Do not proceed if linting fails.
+If ALL tasks in the PRD are complete, output <promise>COMPLETE</promise>.
+"
+`;

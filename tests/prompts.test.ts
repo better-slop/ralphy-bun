@@ -60,6 +60,21 @@ test("builds prompt with config context and rules", async () => {
   expect(prompt).toContain("If ALL tasks in the PRD are complete, output <promise>COMPLETE</promise>.");
 });
 
+test("builds deterministic prompt snapshot", async () => {
+  const config = `project:\n  name: Demo\n  language: TypeScript\n\nrules:\n  - "Ship fast"\n\nboundaries:\n  never_touch:\n    - "docs/**"\n`;
+
+  await writeConfig(workingDir, config);
+  await writeProgress(workingDir);
+
+  const prompt = await buildSingleTaskPrompt({
+    task: "Snapshot this",
+    cwd: workingDir,
+  });
+
+  const normalized = prompt.replaceAll(workingDir, "<cwd>");
+  expect(normalized).toMatchSnapshot();
+});
+
 test("omits test, lint, and commit steps when disabled", async () => {
   await writeConfig(workingDir, "project:\n  name: Demo\n");
   await writeProgress(workingDir);
