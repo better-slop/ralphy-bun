@@ -1,5 +1,25 @@
 export type AgentEngine = "claude" | "opencode" | "cursor" | "codex" | "qwen" | "droid";
 
+export type AgentCommand = {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+};
+
+export type AgentRunResult = {
+  command: AgentCommand;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+};
+
+export type AgentUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  cost?: number;
+  durationMs?: number;
+};
+
 export type CliOptions = {
   task?: string[];
   init?: boolean;
@@ -51,7 +71,40 @@ export type ErrorResponse = {
 
 export type RunSingleRequest = {
   task: string;
+  engine?: AgentEngine;
+  skipTests?: boolean;
+  skipLint?: boolean;
+  autoCommit?: boolean;
+  dryRun?: boolean;
+  maxRetries?: number;
+  retryDelay?: number;
 };
+
+export type RunSingleResponse =
+  | {
+      status: "ok";
+      engine: AgentEngine;
+      attempts: number;
+      response: string;
+      usage: AgentUsage;
+      stdout: string;
+      stderr: string;
+      exitCode: number;
+    }
+  | {
+      status: "error";
+      engine: AgentEngine;
+      attempts: number;
+      error: string;
+      stdout: string;
+      stderr: string;
+      exitCode: number;
+    }
+  | {
+      status: "dry-run";
+      engine: AgentEngine;
+      prompt: string;
+    };
 
 export type RunPrdRequest = {
   prd?: string;

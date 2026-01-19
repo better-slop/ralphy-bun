@@ -10,6 +10,8 @@ type ServerHandle = {
   baseUrl: string;
 };
 
+type ServerOptions = NonNullable<Parameters<typeof createServer>[0]>;
+
 let workingDir = "";
 
 beforeEach(async () => {
@@ -22,8 +24,13 @@ afterEach(async () => {
   }
 });
 
-const startServer = (): ServerHandle => {
-  const server = createServer({ hostname: "127.0.0.1", port: 0, cwd: workingDir });
+const startServer = (options: { runSingleTask?: ServerOptions["runSingleTask"] } = {}): ServerHandle => {
+  const server = createServer({
+    hostname: "127.0.0.1",
+    port: 0,
+    cwd: workingDir,
+    runSingleTask: options.runSingleTask,
+  });
   return {
     server,
     baseUrl: `http://${server.hostname}:${server.port}`,
@@ -141,6 +148,42 @@ test("GET /v1/tasks/next returns next markdown task", async () => {
     expect(payload).toEqual({
       status: "ok",
       task: { source: "markdown", text: "First task", line: 1 },
+    });
+  } finally {
+    await server.stop();
+  }
+});
+
+test("POST /v1/run/single executes single task", async () => {
+  const runSingleTask: ServerOptions["runSingleTask"] = async (request) => ({
+    status: "ok",
+    engine: request.engine ?? "claude",
+    attempts: 1,
+    response: `Done: ${request.task}`,
+    usage: { inputTokens: 1, outputTokens: 2 },
+    stdout: "ok",
+    stderr: "",
+    exitCode: 0,
+  });
+  const { server, baseUrl } = startServer({ runSingleTask });
+
+  try {
+    const response = await fetch(`${baseUrl}/v1/run/single`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ task: "Ship it", engine: "opencode" }),
+    });
+    expect(response.status).toBe(200);
+    const payload = await readJson(response);
+    expect(payload).toEqual({
+      status: "ok",
+      engine: "opencode",
+      attempts: 1,
+      response: "Done: Ship it",
+      usage: { inputTokens: 1, outputTokens: 2 },
+      stdout: "ok",
+      stderr: "",
+      exitCode: 0,
     });
   } finally {
     await server.stop();

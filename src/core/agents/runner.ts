@@ -1,13 +1,7 @@
-import type { AgentEngine } from "../../shared/types";
+import type { AgentCommand, AgentEngine, AgentRunResult } from "../../shared/types";
 
 export type AgentCommandOptions = {
   codexLastMessagePath?: string;
-};
-
-export type AgentCommand = {
-  command: string;
-  args: string[];
-  env?: Record<string, string>;
 };
 
 export type SpawnedProcess = {
@@ -25,13 +19,6 @@ export type AgentRunOptions = {
   env?: Record<string, string>;
   codexLastMessagePath?: string;
   spawn?: SpawnFn;
-};
-
-export type AgentRunResult = {
-  command: AgentCommand;
-  stdout: string;
-  stderr: string;
-  exitCode: number;
 };
 
 const opencodePermission = "{\"*\":\"allow\"}";

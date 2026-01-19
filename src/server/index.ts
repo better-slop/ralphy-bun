@@ -3,18 +3,21 @@ import type {
   ConfigRulesRequest,
   ErrorResponse,
   HealthResponse,
+  RunSingleRequest,
   TasksCompleteRequest,
   TasksNextQuery,
   TasksNextResponse,
   VersionResponse,
 } from "../shared/types";
 import { addConfigRule, initRalphyConfig, readRalphyConfig } from "../core/config";
+import { runSingleTask } from "../core/single";
 import { completeTask, getNextTask } from "../core/tasks/source";
 
 type ServerOptions = {
   port?: number;
   hostname?: string;
   cwd?: string;
+  runSingleTask?: typeof runSingleTask;
 };
 
 const jsonResponse = (payload: unknown, status = 200) =>
@@ -65,7 +68,16 @@ const isTasksCompleteRequest = (body: unknown): body is TasksCompleteRequest =>
       typeof (body as { task: unknown }).task === "string",
   );
 
-const createHandler = (cwd: string) => async (request: Request) => {
+const isRunSingleRequest = (body: unknown): body is RunSingleRequest =>
+  Boolean(
+    body &&
+      typeof body === "object" &&
+      "task" in body &&
+      typeof (body as { task: unknown }).task === "string",
+  );
+
+const createHandler = (cwd: string, runner: typeof runSingleTask) =>
+  async (request: Request) => {
   const { pathname } = new URL(request.url);
 
   if (request.method === "GET" && pathname === "/v1/health") {
@@ -112,6 +124,17 @@ const createHandler = (cwd: string) => async (request: Request) => {
     return jsonResponse(payload);
   }
 
+  if (request.method === "POST" && pathname === "/v1/run/single") {
+    const body = await readRequestBody(request);
+    if (!isRunSingleRequest(body) || body.task.trim().length === 0) {
+      const payload: ErrorResponse = { error: "Invalid request" };
+      return jsonResponse(payload, 400);
+    }
+
+    const result = await runner({ ...body, cwd });
+    return jsonResponse(result);
+  }
+
   if (request.method === "POST" && pathname === "/v1/tasks/complete") {
     const body = await readRequestBody(request);
     if (!isTasksCompleteRequest(body) || body.task.trim().length === 0) {
@@ -135,10 +158,11 @@ const createHandler = (cwd: string) => async (request: Request) => {
 
 export const createServer = (options: ServerOptions = {}) => {
   const cwd = options.cwd ?? process.cwd();
+  const runner = options.runSingleTask ?? runSingleTask;
 
   return Bun.serve({
     port: options.port,
     hostname: options.hostname,
-    fetch: createHandler(cwd),
+    fetch: createHandler(cwd, runner),
   });
 };
