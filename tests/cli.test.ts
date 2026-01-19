@@ -172,3 +172,28 @@ test("dispatches positional tasks to single-run endpoint", async () => {
   expect(calls[1]?.init?.body).toBe(JSON.stringify({ task: "ship it" }));
   expect(stopCalls).toHaveLength(1);
 });
+
+test("dispatches prd run when no task is provided", async () => {
+  const { server, stopCalls } = createFakeServer();
+  const baseUrl = `http://${server.hostname}:${server.port}`;
+  const { fetcher, calls } = createFakeFetch({
+    [`${baseUrl}/v1/health`]: { body: { status: "ok" } },
+    [`${baseUrl}/v1/run/prd`]: { body: { result: "queued" } },
+  });
+
+  const result = await runCli(["--prd", "PRD.md", "--yaml", "tasks.yaml"], {
+    createServer: () => server,
+    fetcher,
+  });
+
+  expect(result).not.toBeNull();
+  expect(result?.payload).toEqual({ result: "queued" });
+  expect(calls).toHaveLength(2);
+  expect(calls[0]?.url).toBe(`${baseUrl}/v1/health`);
+  expect(calls[1]?.url).toBe(`${baseUrl}/v1/run/prd`);
+  expect(calls[1]?.init?.method).toBe("POST");
+  expect(calls[1]?.init?.body).toBe(
+    JSON.stringify({ prd: "PRD.md", yaml: "tasks.yaml" }),
+  );
+  expect(stopCalls).toHaveLength(1);
+});

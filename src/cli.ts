@@ -2,42 +2,15 @@ import yargs from "yargs/yargs";
 import type { Argv } from "yargs";
 import { packageVersion } from "./shared/version";
 import { createServer } from "./server";
+import type {
+  CliOptions,
+  ConfigRulesRequest,
+  RunPrdRequest,
+  RunSingleRequest,
+  ServerRequestBody,
+} from "./shared/types";
 
-type CliArgs = {
-  task?: string[];
-  init?: boolean;
-  config?: boolean;
-  addRule?: string;
-  skipTests?: boolean;
-  noTests?: boolean;
-  skipLint?: boolean;
-  noLint?: boolean;
-  fast?: boolean;
-  dryRun?: boolean;
-  maxIterations?: number;
-  maxRetries?: number;
-  retryDelay?: number;
-  claude?: boolean;
-  opencode?: boolean;
-  cursor?: boolean;
-  agent?: boolean;
-  codex?: boolean;
-  qwen?: boolean;
-  droid?: boolean;
-  parallel?: boolean;
-  maxParallel?: number;
-  branchPerTask?: boolean;
-  baseBranch?: string;
-  createPr?: boolean;
-  draftPr?: boolean;
-  commit?: boolean;
-  prd?: string;
-  yaml?: string;
-  github?: string;
-  githubLabel?: string;
-  verbose?: boolean;
-  v?: boolean;
-};
+type CliArgs = CliOptions;
 
 const configureCli = (args: string[]): Argv<CliArgs> =>
   yargs(args)
@@ -176,7 +149,7 @@ const configureCli = (args: string[]): Argv<CliArgs> =>
 type DispatchTarget = {
   method: "GET" | "POST";
   path: string;
-  body?: unknown;
+  body?: ServerRequestBody;
 };
 
 type DispatchResult = {
@@ -222,27 +195,30 @@ const selectDispatchTarget = (args: CliArgs): DispatchTarget => {
   }
 
   if (typeof args.addRule === "string") {
+    const body: ConfigRulesRequest = { rule: args.addRule };
     return {
       method: "POST",
       path: "/v1/config/rules",
-      body: { rule: args.addRule },
+      body,
     };
   }
 
   const taskText = args.task?.join(" ");
   if (taskText) {
-    return { method: "POST", path: "/v1/run/single", body: { task: taskText } };
+    const body: RunSingleRequest = { task: taskText };
+    return { method: "POST", path: "/v1/run/single", body };
   }
 
+  const body: RunPrdRequest = {
+    prd: args.prd,
+    yaml: args.yaml,
+    github: args.github,
+    githubLabel: args.githubLabel,
+  };
   return {
     method: "POST",
     path: "/v1/run/prd",
-    body: {
-      prd: args.prd,
-      yaml: args.yaml,
-      github: args.github,
-      githubLabel: args.githubLabel,
-    },
+    body,
   };
 };
 

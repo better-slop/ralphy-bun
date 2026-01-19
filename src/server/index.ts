@@ -1,4 +1,5 @@
 import { packageVersion } from "../shared/version";
+import type { ErrorResponse, HealthResponse, VersionResponse } from "../shared/types";
 
 type ServerOptions = {
   port?: number;
@@ -17,14 +18,17 @@ const handleRequest = (request: Request) => {
   const { pathname } = new URL(request.url);
 
   if (request.method === "GET" && pathname === "/v1/health") {
-    return jsonResponse({ status: "ok", version: packageVersion });
+    const payload: HealthResponse = { status: "ok", version: packageVersion };
+    return jsonResponse(payload);
   }
 
   if (request.method === "GET" && pathname === "/v1/version") {
-    return jsonResponse({ version: packageVersion });
+    const payload: VersionResponse = { version: packageVersion };
+    return jsonResponse(payload);
   }
 
-  return jsonResponse({ error: "Not Found" }, 404);
+  const payload: ErrorResponse = { error: "Not Found" };
+  return jsonResponse(payload, 404);
 };
 
 export const createServer = (options: ServerOptions = {}) =>

@@ -3,4 +3,5 @@
 - 2026-01-19: Completed Sprint 1 Task 1 CLI yargs schema parity + tests.
 - 2026-01-19: Completed Sprint 1 Task 2 server bootstrap endpoints + tests.
 - 2026-01-19: Completed Sprint 1 Task 3 CLI dispatch to server with tests.
+- 2026-01-19: Completed Sprint 1 Task 4 shared types for CLI + server with tests.
 
