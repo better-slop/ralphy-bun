@@ -127,3 +127,26 @@ test("cleanup preserves dirty worktrees when requested", async () => {
     await rm(cwd, { recursive: true, force: true });
   }
 });
+
+test("cleanup can skip branch removal", async () => {
+  const cwd = await createWorkspace();
+
+  try {
+    const { runner, calls } = createRunner({
+      "rev-parse --abbrev-ref HEAD": "main\n",
+      "branch --list": "main\n",
+    });
+    const manager = createWorktreeManager({ cwd, runner });
+    const record = await manager.createWorktree({ group: "Group A" });
+
+    await manager.cleanup({ removeBranches: false });
+    expect(calls.map((call) => call.args.join(" "))).toEqual([
+      "rev-parse --abbrev-ref HEAD",
+      "branch --list",
+      `worktree add -b ${record.branch} ${record.path} main`,
+      `worktree remove --force ${record.path}`,
+    ]);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
