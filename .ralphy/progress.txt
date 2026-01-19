@@ -31,4 +31,5 @@
 - 2026-01-19: Completed Sprint 7 Task 5 worktree lifecycle cleanup branch handling + tests.
 - 2026-01-19: Completed Sprint 8 Task 1 compiled binary build script + tests.
 - 2026-01-19: Completed Sprint 8 Task 2 e2e smoke tests for CLI help/version/init/dry-run.
+- 2026-01-19: Completed Sprint 8 Task 3 usage doc additions in README.
 
