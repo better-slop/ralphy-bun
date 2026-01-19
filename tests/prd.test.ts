@@ -134,6 +134,104 @@ test("runPrd stops immediately when max iterations is zero", async () => {
   }
 });
 
+test("runPrd stops after reaching max iterations", async () => {
+  const cwd = await createWorkspace();
+  let taskCalls = 0;
+
+  try {
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    await mkdir(join(cwd, ".ralphy"), { recursive: true });
+    await Bun.write(join(cwd, "PRD.md"), "- [ ] Task");
+    await Bun.write(join(cwd, ".ralphy", "progress.txt"), "# Ralphy Progress Log\n\n");
+
+    const result = await runPrd(createRunOptions(cwd, { maxIterations: 1 }), {
+      getNextTask: async () => {
+        taskCalls += 1;
+        return { status: "ok", task: { source: "markdown", text: "Ship it" } };
+      },
+      runner: async () => ({
+        status: "ok",
+        engine: "claude",
+        attempts: 1,
+        response: "Done",
+        usage: { inputTokens: 2, outputTokens: 3, cost: 0.01, durationMs: 400 },
+        stdout: "ok",
+        stderr: "",
+        exitCode: 0,
+      }),
+      completeTask: async () => ({ status: "updated", source: "markdown", task: "Ship it" }),
+    });
+
+    expect(result).toEqual({
+      status: "ok",
+      iterations: 1,
+      completed: 1,
+      stopped: "max-iterations",
+      tasks: [
+        {
+          task: "Ship it",
+          source: "markdown",
+          status: "completed",
+          attempts: 1,
+          response: "Done",
+        },
+      ],
+      usage: { inputTokens: 2, outputTokens: 3, cost: 0.01, durationMs: 400 },
+    });
+    expect(taskCalls).toBe(1);
+    const progress = await Bun.file(join(cwd, ".ralphy", "progress.txt")).text();
+    expect(progress).toContain("- [✓]");
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("runPrd returns error when retries are exhausted", async () => {
+  const cwd = await createWorkspace();
+
+  try {
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    await mkdir(join(cwd, ".ralphy"), { recursive: true });
+    await Bun.write(join(cwd, "PRD.md"), "- [ ] Task");
+    await Bun.write(join(cwd, ".ralphy", "progress.txt"), "# Ralphy Progress Log\n\n");
+
+    const result = await runPrd(createRunOptions(cwd), {
+      getNextTask: async () => ({ status: "ok", task: { source: "markdown", text: "Ship it" } }),
+      runner: async () => ({
+        status: "error",
+        engine: "claude",
+        attempts: 3,
+        error: "Agent failed",
+        stdout: "",
+        stderr: "boom",
+        exitCode: 1,
+      }),
+    });
+
+    expect(result).toEqual({
+      status: "error",
+      stage: "agent",
+      message: "Agent failed",
+      iterations: 1,
+      tasks: [
+        {
+          task: "Ship it",
+          source: "markdown",
+          status: "failed",
+          attempts: 3,
+          error: "Agent failed",
+        },
+      ],
+      task: "Ship it",
+      usage: { inputTokens: 0, outputTokens: 0 },
+    });
+    const progress = await Bun.file(join(cwd, ".ralphy", "progress.txt")).text();
+    expect(progress).toContain("- [✗]");
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test("runPrd executes tasks sequentially and completes", async () => {
   const cwd = await createWorkspace();
   let taskIndex = 0;
