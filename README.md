@@ -1,5 +1,7 @@
 # @better-slop/ralphy-bun
 
+WIP: converts michaelshimeles' ralphy to bun
+
 To install dependencies:
 
 ```bash

@@ -5,8 +5,8 @@
 project:
   name: "@better-slop/ralphy-bun"
   language: "TypeScript"
-  framework: ""
-  description: ""  # Add a brief description
+  framework: "bun"
+  description: "converts the github reop michaelshimeles/ralphy to bun but with a client server arch"  # Add a brief description
 
 # Commands (auto-detected from package.json/pyproject.toml)
 commands:
