@@ -1,2 +1,4 @@
 # Ralphy Progress Log
 
+- 2026-01-19: Completed Sprint 1 Task 1 CLI yargs schema parity + tests.
+

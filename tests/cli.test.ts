@@ -3,6 +3,8 @@ import { parseArgs } from "../src/cli";
 
 test("parses core flags", () => {
   const parsed = parseArgs([
+    "--init",
+    "--config",
     "--dry-run",
     "--max-iterations",
     "3",
@@ -35,6 +37,8 @@ test("parses core flags", () => {
     "--verbose",
   ]);
 
+  expect(parsed.init).toBe(true);
+  expect(parsed.config).toBe(true);
   expect(parsed.dryRun).toBe(true);
   expect(parsed.maxIterations).toBe(3);
   expect(parsed.maxRetries).toBe(2);
