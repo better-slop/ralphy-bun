@@ -14,3 +14,4 @@
 - 2026-01-19: Completed Sprint 3 Task 4 unified task source + tasks next/complete endpoints + tests.
 - 2026-01-19: Completed Sprint 3 Task 5 fixture-based task source tests.
 - 2026-01-19: Completed Sprint 4 Task 1 prompt construction parity for single-task flow.
+- 2026-01-19: Completed Sprint 4 Task 2 agent runner adapters + tests.
