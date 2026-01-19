@@ -17,9 +17,9 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/yargs": "^17.0.35",
-    "oxfmt": "^0.10.1",
-    "oxlint": "^0.10.1",
-    "oxlint-tsgolint": "^0.10.1"
+    "oxfmt": "^0.24.0",
+    "oxlint": "^1.39.0",
+    "oxlint-tsgolint": "^0.11.1"
   },
   "peerDependencies": {
     "typescript": "^5"
