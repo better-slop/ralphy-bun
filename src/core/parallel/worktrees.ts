@@ -13,11 +13,12 @@ export type WorktreeRecord = {
 export type WorktreeCreateOptions = {
   group: string | number;
   taskSourcePath?: string;
+  baseBranch?: string;
 };
 
 export type WorktreeManager = {
   createWorktree: (options: WorktreeCreateOptions) => Promise<WorktreeRecord>;
-  cleanup: () => Promise<void>;
+  cleanup: (options?: { removeBranches?: boolean }) => Promise<void>;
 };
 
 export type WorktreeManagerOptions = {
@@ -121,9 +122,9 @@ export const createWorktreeManager = (options: WorktreeManagerOptions): Worktree
   const cwd = options.cwd;
   const created: WorktreeRecord[] = [];
 
-  const createWorktree = async ({ group, taskSourcePath }: WorktreeCreateOptions) => {
+  const createWorktree = async ({ group, taskSourcePath, baseBranch }: WorktreeCreateOptions) => {
     const normalizedGroup = normalizeGroup(group);
-    const baseBranch = options.baseBranch?.trim() || (await getCurrentBranch(runner, cwd));
+    const targetBaseBranch = baseBranch?.trim() || options.baseBranch?.trim() || (await getCurrentBranch(runner, cwd));
     const existingBranches = await listBranches(runner, cwd);
     const branchName = buildBranchName(normalizedGroup, existingBranches);
     const root = buildWorktreeRoot(cwd, options.worktreeRoot);
@@ -133,7 +134,7 @@ export const createWorktreeManager = (options: WorktreeManagerOptions): Worktree
     const basePath = join(root, worktreeName);
     const worktreePath = await ensureUniquePath(basePath);
 
-    await runner(["worktree", "add", "-b", branchName, worktreePath, baseBranch], { cwd });
+    await runner(["worktree", "add", "-b", branchName, worktreePath, targetBaseBranch], { cwd });
     await ensureWorktreeDirectory(worktreePath);
 
     let copiedTaskSource: string | undefined;
@@ -152,8 +153,9 @@ export const createWorktreeManager = (options: WorktreeManagerOptions): Worktree
     return record;
   };
 
-  const cleanup = async () => {
+  const cleanup = async (options?: { removeBranches?: boolean }) => {
     const errors: Error[] = [];
+    const removeBranches = options?.removeBranches ?? true;
 
     for (const record of created) {
       try {
@@ -162,10 +164,12 @@ export const createWorktreeManager = (options: WorktreeManagerOptions): Worktree
         errors.push(error instanceof Error ? error : new Error("Worktree removal failed"));
       }
 
-      try {
-        await runner(["branch", "-D", record.branch], { cwd });
-      } catch (error) {
-        errors.push(error instanceof Error ? error : new Error("Branch removal failed"));
+      if (removeBranches) {
+        try {
+          await runner(["branch", "-D", record.branch], { cwd });
+        } catch (error) {
+          errors.push(error instanceof Error ? error : new Error("Branch removal failed"));
+        }
       }
     }
 

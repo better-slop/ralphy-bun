@@ -121,14 +121,25 @@ const createBranchManager = () => {
 const createWorktreeManager = () => {
   const calls: string[] = [];
   const worktrees: string[] = [];
+  const baseBranches: Array<string | undefined> = [];
   return {
     calls,
     worktrees,
+    baseBranches,
     manager: {
-      createWorktree: async ({ group, taskSourcePath }: { group: string | number; taskSourcePath?: string }) => {
+      createWorktree: async ({
+        group,
+        taskSourcePath,
+        baseBranch,
+      }: {
+        group: string | number;
+        taskSourcePath?: string;
+        baseBranch?: string;
+      }) => {
         const path = await mkdtemp(join(tmpdir(), "ralphy-parallel-"));
         worktrees.push(path);
         calls.push(`create:${group}`);
+        baseBranches.push(baseBranch);
         let copiedTaskSource: string | undefined;
         if (taskSourcePath) {
           const contents = await Bun.file(taskSourcePath).text();
@@ -143,12 +154,37 @@ const createWorktreeManager = () => {
           copiedTaskSource,
         };
       },
-      cleanup: async () => {
+      cleanup: async (_options?: { removeBranches?: boolean }) => {
         calls.push("cleanup");
         await Promise.all(worktrees.map((path) => rm(path, { recursive: true, force: true })));
       },
     },
   };
+};
+
+const createGitRunner = (options?: {
+  responses?: Record<string, string>;
+  failures?: Set<string>;
+}) => {
+  const calls: string[] = [];
+  const responses: Record<string, string> = {
+    "rev-parse --abbrev-ref HEAD": "main\n",
+    "branch --list": "main\n",
+    "symbolic-ref --short HEAD": "main\n",
+    "diff --name-only --diff-filter=U": "",
+    "rev-parse -q --verify MERGE_HEAD": "",
+    ...options?.responses,
+  };
+  const failures = options?.failures ?? new Set<string>();
+  const runner = async (args: readonly string[]) => {
+    const key = args.join(" ");
+    calls.push(key);
+    if (failures.has(key)) {
+      throw new Error(`git failed: ${key}`);
+    }
+    return { stdout: responses[key] ?? "" };
+  };
+  return { runner, calls };
 };
 
 test("runPrd stops immediately when max iterations is zero", async () => {
@@ -613,6 +649,7 @@ test("runPrd executes parallel groups with max-parallel", async () => {
       ].join("\n"),
     );
 
+    const { runner: gitRunner } = createGitRunner();
     const result = await runPrd(
       { cwd, yaml: "tasks.yaml", parallel: true, maxParallel: 1 },
       {
@@ -634,6 +671,7 @@ test("runPrd executes parallel groups with max-parallel", async () => {
         },
         completeTask: async () => ({ status: "updated", source: "yaml", task: "task" }),
         worktreeManagerFactory: () => manager,
+        gitRunner,
       },
     );
 
@@ -680,6 +718,7 @@ test("runPrd allows multiple parallel workers", async () => {
       ].join("\n"),
     );
 
+    const { runner: gitRunner } = createGitRunner();
     const result = await runPrd(
       { cwd, yaml: "tasks.yaml", parallel: true, maxParallel: 2 },
       {
@@ -701,6 +740,7 @@ test("runPrd allows multiple parallel workers", async () => {
         },
         completeTask: async () => ({ status: "updated", source: "yaml", task: "task" }),
         worktreeManagerFactory: () => manager,
+        gitRunner,
       },
     );
 
@@ -709,6 +749,115 @@ test("runPrd allows multiple parallel workers", async () => {
       expect(result.completed).toBe(2);
     }
     expect(maxActive).toBe(2);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("runPrd merges integration branches between groups", async () => {
+  const cwd = await createWorkspace();
+  const { manager, baseBranches } = createWorktreeManager();
+  const yamlPath = join(cwd, "tasks.yaml");
+
+  try {
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    await mkdir(join(cwd, ".ralphy"), { recursive: true });
+    await Bun.write(join(cwd, ".ralphy", "progress.txt"), "# Ralphy Progress Log\n\n");
+    await Bun.write(
+      yamlPath,
+      [
+        "tasks:",
+        "  - title: Task A",
+        "    completed: false",
+        "    parallel_group: 1",
+        "  - title: Task B",
+        "    completed: false",
+        "    parallel_group: 2",
+      ].join("\n"),
+    );
+
+    const { runner: gitRunner, calls } = createGitRunner();
+    const result = await runPrd(
+      { cwd, yaml: "tasks.yaml", parallel: true, maxParallel: 1 },
+      {
+        runner: async ({ task }) => ({
+          status: "ok",
+          engine: "claude",
+          attempts: 1,
+          response: `Done ${task}`,
+          usage: { inputTokens: 1, outputTokens: 1 },
+          stdout: "ok",
+          stderr: "",
+          exitCode: 0,
+        }),
+        completeTask: async () => ({ status: "updated", source: "yaml", task: "task" }),
+        worktreeManagerFactory: () => manager,
+        gitRunner,
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    expect(baseBranches).toEqual(["main", "ralphy/integration-group-1"]);
+    expect(calls).toContain("branch ralphy/integration-group-1 main");
+    expect(calls).toContain("merge --no-edit ralphy/parallel/1");
+    expect(calls).toContain("branch ralphy/integration-group-2 ralphy/integration-group-1");
+    expect(calls).toContain("merge --no-edit ralphy/parallel/2");
+    expect(calls).toContain("merge --no-edit ralphy/integration-group-2");
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("runPrd reports merge failures", async () => {
+  const cwd = await createWorkspace();
+  const { manager } = createWorktreeManager();
+  const yamlPath = join(cwd, "tasks.yaml");
+
+  try {
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    await mkdir(join(cwd, ".ralphy"), { recursive: true });
+    await Bun.write(join(cwd, ".ralphy", "progress.txt"), "# Ralphy Progress Log\n\n");
+    await Bun.write(
+      yamlPath,
+      [
+        "tasks:",
+        "  - title: Task A",
+        "    completed: false",
+        "    parallel_group: 1",
+        "  - title: Task B",
+        "    completed: false",
+        "    parallel_group: 2",
+      ].join("\n"),
+    );
+
+    const { runner: gitRunner } = createGitRunner({
+      failures: new Set(["merge --no-edit ralphy/integration-group-2"]),
+    });
+    const result = await runPrd(
+      { cwd, yaml: "tasks.yaml", parallel: true, maxParallel: 1 },
+      {
+        runner: async ({ task }) => ({
+          status: "ok",
+          engine: "claude",
+          attempts: 1,
+          response: `Done ${task}`,
+          usage: { inputTokens: 1, outputTokens: 1 },
+          stdout: "ok",
+          stderr: "",
+          exitCode: 0,
+        }),
+        completeTask: async () => ({ status: "updated", source: "yaml", task: "task" }),
+        worktreeManagerFactory: () => manager,
+        gitRunner,
+      },
+    );
+
+    expect(result.status).toBe("error");
+    if (result.status === "error" && "stage" in result) {
+      expect(result.stage).toBe("merge");
+      expect(result.message).toContain("merge --no-edit");
+      expect(result.tasks.map((task) => task.task)).toEqual(["Task A", "Task B"]);
+    }
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

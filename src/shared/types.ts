@@ -168,7 +168,7 @@ export type RunPrdFailure =
   | { status: "error"; failures: PrdRequirementFailure[]; usage?: AgentUsageTotals }
   | {
       status: "error";
-      stage: "task-source" | "agent" | "complete" | "pr";
+      stage: "task-source" | "agent" | "complete" | "pr" | "merge";
       message: string;
       iterations: number;
       tasks: PrdRunTask[];
