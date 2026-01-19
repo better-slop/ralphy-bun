@@ -197,20 +197,68 @@ test("POST /v1/run/single executes single task", async () => {
 });
 
 test("POST /v1/run/prd executes prd flow", async () => {
-  const runPrd: ServerOptions["runPrd"] = async () => ({
-    status: "ok",
-  });
+  const runPrd: ServerOptions["runPrd"] = async (request) => {
+    expect(request).toEqual({
+      prd: "PRD.md",
+      maxIterations: 2,
+      maxRetries: 1,
+      retryDelay: 3,
+      skipTests: true,
+      skipLint: true,
+      autoCommit: false,
+      engine: "opencode",
+      cwd: workingDir,
+    });
+    return {
+      status: "ok",
+      iterations: 1,
+      completed: 1,
+      stopped: "no-tasks",
+      tasks: [
+        {
+          task: "Ship it",
+          source: "markdown",
+          status: "completed",
+          attempts: 1,
+          response: "Done",
+        },
+      ],
+    };
+  };
   const { server, baseUrl } = startServer({ runPrd });
 
   try {
     const response = await fetch(`${baseUrl}/v1/run/prd`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prd: "PRD.md" }),
+      body: JSON.stringify({
+        prd: "PRD.md",
+        maxIterations: 2,
+        maxRetries: 1,
+        retryDelay: 3,
+        skipTests: true,
+        skipLint: true,
+        autoCommit: false,
+        engine: "opencode",
+      }),
     });
     expect(response.status).toBe(200);
     const payload = await readJson(response);
-    expect(payload).toEqual({ status: "ok" });
+    expect(payload).toEqual({
+      status: "ok",
+      iterations: 1,
+      completed: 1,
+      stopped: "no-tasks",
+      tasks: [
+        {
+          task: "Ship it",
+          source: "markdown",
+          status: "completed",
+          attempts: 1,
+          response: "Done",
+        },
+      ],
+    });
   } finally {
     await server.stop();
   }

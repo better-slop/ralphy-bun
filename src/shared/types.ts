@@ -106,11 +106,20 @@ export type RunSingleResponse =
       prompt: string;
     };
 
+export type TaskSource = "markdown" | "yaml" | "github";
+
 export type RunPrdRequest = {
   prd?: string;
   yaml?: string;
   github?: string;
   githubLabel?: string;
+  maxIterations?: number;
+  maxRetries?: number;
+  retryDelay?: number;
+  skipTests?: boolean;
+  skipLint?: boolean;
+  autoCommit?: boolean;
+  engine?: AgentEngine;
 };
 
 export type PrdRequirement = "git" | "dependencies" | "task-source";
@@ -124,7 +133,35 @@ export type PrdRequirementsResult =
   | { status: "ok" }
   | { status: "error"; failures: PrdRequirementFailure[] };
 
-export type RunPrdResponse = PrdRequirementsResult;
+export type PrdRunTask = {
+  task: string;
+  source: TaskSource;
+  status: "completed" | "failed";
+  attempts: number;
+  response?: string;
+  error?: string;
+};
+
+export type RunPrdSuccess = {
+  status: "ok";
+  iterations: number;
+  completed: number;
+  stopped: "no-tasks" | "max-iterations";
+  tasks: PrdRunTask[];
+};
+
+export type RunPrdFailure =
+  | { status: "error"; failures: PrdRequirementFailure[] }
+  | {
+      status: "error";
+      stage: "task-source" | "agent" | "complete";
+      message: string;
+      iterations: number;
+      tasks: PrdRunTask[];
+      task?: string;
+    };
+
+export type RunPrdResponse = RunPrdSuccess | RunPrdFailure;
 
 export type TasksNextQuery = {
   prd?: string;
@@ -134,7 +171,7 @@ export type TasksNextQuery = {
 };
 
 export type TaskPreview = {
-  source: "markdown" | "yaml" | "github";
+  source: TaskSource;
   text: string;
   line?: number;
   url?: string;
@@ -143,7 +180,7 @@ export type TaskPreview = {
 
 export type TasksNextResponse =
   | { status: "ok"; task: TaskPreview }
-  | { status: "empty" | "error"; source: "markdown" | "yaml" | "github"; error?: string };
+  | { status: "empty" | "error"; source: TaskSource; error?: string };
 
 export type TasksCompleteRequest = {
   task: string;

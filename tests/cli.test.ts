@@ -169,7 +169,7 @@ test("dispatches positional tasks to single-run endpoint", async () => {
   expect(calls[0]?.url).toBe(`${baseUrl}/v1/health`);
   expect(calls[1]?.url).toBe(`${baseUrl}/v1/run/single`);
   expect(calls[1]?.init?.method).toBe("POST");
-  expect(calls[1]?.init?.body).toBe(JSON.stringify({ task: "ship it" }));
+  expect(calls[1]?.init?.body).toBe(JSON.stringify({ task: "ship it", autoCommit: true }));
   expect(stopCalls).toHaveLength(1);
 });
 
@@ -193,7 +193,7 @@ test("dispatches prd run when no task is provided", async () => {
   expect(calls[1]?.url).toBe(`${baseUrl}/v1/run/prd`);
   expect(calls[1]?.init?.method).toBe("POST");
   expect(calls[1]?.init?.body).toBe(
-    JSON.stringify({ prd: "PRD.md", yaml: "tasks.yaml" }),
+    JSON.stringify({ prd: "PRD.md", yaml: "tasks.yaml", autoCommit: true }),
   );
   expect(stopCalls).toHaveLength(1);
 });

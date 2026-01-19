@@ -156,6 +156,13 @@ const createHandler = (
       yaml: body.yaml,
       github: body.github,
       githubLabel: body.githubLabel,
+      maxIterations: body.maxIterations,
+      maxRetries: body.maxRetries,
+      retryDelay: body.retryDelay,
+      skipTests: body.skipTests,
+      skipLint: body.skipLint,
+      autoCommit: body.autoCommit,
+      engine: body.engine,
       cwd,
     });
     return jsonResponse(result);

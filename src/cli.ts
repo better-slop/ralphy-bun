@@ -3,6 +3,7 @@ import type { Argv } from "yargs";
 import { packageVersion } from "./shared/version";
 import { createServer } from "./server";
 import type {
+  AgentEngine,
   CliOptions,
   ConfigRulesRequest,
   RunPrdRequest,
@@ -152,6 +153,32 @@ type DispatchTarget = {
   body?: ServerRequestBody;
 };
 
+const selectEngine = (args: CliArgs): AgentEngine | undefined => {
+  if (args.opencode) {
+    return "opencode";
+  }
+  if (args.cursor || args.agent) {
+    return "cursor";
+  }
+  if (args.codex) {
+    return "codex";
+  }
+  if (args.qwen) {
+    return "qwen";
+  }
+  if (args.droid) {
+    return "droid";
+  }
+  if (args.claude) {
+    return "claude";
+  }
+  return undefined;
+};
+
+const resolveSkipTests = (args: CliArgs) => args.skipTests ?? args.noTests;
+
+const resolveSkipLint = (args: CliArgs) => args.skipLint ?? args.noLint;
+
 type DispatchResult = {
   target: DispatchTarget;
   status: number;
@@ -205,7 +232,15 @@ const selectDispatchTarget = (args: CliArgs): DispatchTarget => {
 
   const taskText = args.task?.join(" ");
   if (taskText) {
-    const body: RunSingleRequest = { task: taskText };
+    const body: RunSingleRequest = {
+      task: taskText,
+      engine: selectEngine(args),
+      skipTests: resolveSkipTests(args),
+      skipLint: resolveSkipLint(args),
+      autoCommit: args.commit,
+      maxRetries: args.maxRetries,
+      retryDelay: args.retryDelay,
+    };
     return { method: "POST", path: "/v1/run/single", body };
   }
 
@@ -214,6 +249,13 @@ const selectDispatchTarget = (args: CliArgs): DispatchTarget => {
     yaml: args.yaml,
     github: args.github,
     githubLabel: args.githubLabel,
+    maxIterations: args.maxIterations,
+    maxRetries: args.maxRetries,
+    retryDelay: args.retryDelay,
+    skipTests: resolveSkipTests(args),
+    skipLint: resolveSkipLint(args),
+    autoCommit: args.commit,
+    engine: selectEngine(args),
   };
   return {
     method: "POST",
