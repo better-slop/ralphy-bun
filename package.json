@@ -2,12 +2,24 @@
   "name": "@better-slop/ralphy-bun",
   "module": "src/index.ts",
   "type": "module",
+  "scripts": {
+    "lint": "oxlint --type-aware",
+    "lint:fix": "oxlint --type-aware --fix",
+    "format": "oxfmt .",
+    "test": "bun test \"**/*.test.ts\"",
+    "build:types": "bun build --outdir=dist --target=bun src/index.ts src/cli.ts",
+    "build:bin": "mkdir -p dist/bin && bun build --compile --outfile=dist/bin/ralphy-bun src/cli.ts",
+    "build": "bun run build:types && bun run build:bin"
+  },
   "dependencies": {
     "yargs": "^17.7.2"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/yargs": "^17.0.35"
+    "@types/yargs": "^17.0.35",
+    "oxfmt": "^0.10.1",
+    "oxlint": "^0.10.1",
+    "oxlint-tsgolint": "^0.10.1"
   },
   "peerDependencies": {
     "typescript": "^5"
