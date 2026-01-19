@@ -205,6 +205,8 @@ test("POST /v1/run/prd executes prd flow", async () => {
         retryDelay: 3,
         branchPerTask: true,
         baseBranch: "main",
+        createPr: undefined,
+        draftPr: undefined,
         skipTests: true,
         skipLint: true,
         autoCommit: false,

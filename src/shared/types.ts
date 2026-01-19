@@ -125,6 +125,8 @@ export type RunPrdRequest = {
   retryDelay?: number;
   branchPerTask?: boolean;
   baseBranch?: string;
+  createPr?: boolean;
+  draftPr?: boolean;
   skipTests?: boolean;
   skipLint?: boolean;
   autoCommit?: boolean;
@@ -164,7 +166,7 @@ export type RunPrdFailure =
   | { status: "error"; failures: PrdRequirementFailure[]; usage?: AgentUsageTotals }
   | {
       status: "error";
-      stage: "task-source" | "agent" | "complete";
+      stage: "task-source" | "agent" | "complete" | "pr";
       message: string;
       iterations: number;
       tasks: PrdRunTask[];

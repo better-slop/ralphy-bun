@@ -344,6 +344,114 @@ test("runPrd uses branch manager when enabled", async () => {
   }
 });
 
+test("runPrd creates a PR after completion when enabled", async () => {
+  const cwd = await createWorkspace();
+  const { manager } = createBranchManager();
+  const createCalls: Array<{ title: string; body: string; baseBranch?: string; headBranch?: string; draft?: boolean }> = [];
+
+  try {
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    await mkdir(join(cwd, ".ralphy"), { recursive: true });
+    await Bun.write(join(cwd, "PRD.md"), "- [ ] Task");
+    await Bun.write(join(cwd, ".ralphy", "progress.txt"), "# Ralphy Progress Log\n\n");
+
+    const result = await runPrd(
+      createRunOptions(cwd, {
+        maxIterations: 1,
+        branchPerTask: true,
+        createPr: true,
+        baseBranch: "main",
+      }),
+      {
+        getNextTask: async () => ({ status: "ok", task: { source: "markdown", text: "Ship it" } }),
+        runner: async () => ({
+          status: "ok",
+          engine: "claude",
+          attempts: 1,
+          response: "Done",
+          usage: { inputTokens: 1, outputTokens: 1 },
+          stdout: "ok",
+          stderr: "",
+          exitCode: 0,
+        }),
+        completeTask: async () => ({ status: "updated", source: "markdown", task: "Ship it" }),
+        branchManagerFactory: () => manager,
+        createPullRequest: async (options) => {
+          createCalls.push({
+            title: options.title,
+            body: options.body,
+            baseBranch: options.baseBranch,
+            headBranch: options.headBranch,
+            draft: options.draft,
+          });
+        },
+      },
+    );
+
+    expect(result.status).toBe("ok");
+    expect(createCalls).toEqual([
+      {
+        title: "Ralphy: Ship it",
+        body: "## Summary\n- Ship it\n",
+        baseBranch: "main",
+        headBranch: "ralphy/Ship it",
+        draft: undefined,
+      },
+    ]);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("runPrd returns error when PR creation fails", async () => {
+  const cwd = await createWorkspace();
+
+  try {
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    await mkdir(join(cwd, ".ralphy"), { recursive: true });
+    await Bun.write(join(cwd, "PRD.md"), "- [ ] Task");
+    await Bun.write(join(cwd, ".ralphy", "progress.txt"), "# Ralphy Progress Log\n\n");
+
+    const result = await runPrd(createRunOptions(cwd, { maxIterations: 1, createPr: true }), {
+      getNextTask: async () => ({ status: "ok", task: { source: "markdown", text: "Ship it" } }),
+      runner: async () => ({
+        status: "ok",
+        engine: "claude",
+        attempts: 1,
+        response: "Done",
+        usage: { inputTokens: 1, outputTokens: 1 },
+        stdout: "ok",
+        stderr: "",
+        exitCode: 0,
+      }),
+      completeTask: async () => ({ status: "updated", source: "markdown", task: "Ship it" }),
+      createPullRequest: async () => {
+        throw new Error("gh failed");
+      },
+    });
+
+    expect(result).toEqual({
+      status: "error",
+      stage: "pr",
+      message: "gh failed",
+      iterations: 1,
+      tasks: [
+        {
+          task: "Ship it",
+          source: "markdown",
+          status: "completed",
+          attempts: 1,
+          response: "Done",
+        },
+      ],
+      task: "Ship it",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test("runPrd returns error when completion fails", async () => {
   const cwd = await createWorkspace();
 

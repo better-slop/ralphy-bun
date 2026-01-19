@@ -151,8 +151,8 @@ const createHandler = (
       return jsonResponse(payload, 400);
     }
 
-      const result = await prdRunner({
-        prd: body.prd,
+    const result = await prdRunner({
+      prd: body.prd,
         yaml: body.yaml,
         github: body.github,
         githubLabel: body.githubLabel,
@@ -161,6 +161,8 @@ const createHandler = (
         retryDelay: body.retryDelay,
         branchPerTask: body.branchPerTask,
         baseBranch: body.baseBranch,
+        createPr: body.createPr,
+        draftPr: body.draftPr,
         skipTests: body.skipTests,
         skipLint: body.skipLint,
         autoCommit: body.autoCommit,

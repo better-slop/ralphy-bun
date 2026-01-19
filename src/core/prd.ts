@@ -10,6 +10,7 @@ import type {
   RunPrdResponse,
 } from "../shared/types";
 import { createBranchPerTaskManager } from "./git/branch";
+import { createPullRequest } from "./git/pr";
 import { logTaskHistory } from "./progress";
 import { runSingleTask } from "./single";
 import { completeTask, getNextTask } from "./tasks/source";
@@ -63,11 +64,16 @@ const addUsageTotals = (totals: AgentUsageTotals, usage: AgentUsageTotals) => {
   }
 };
 
+const buildPrTitle = (task: string) => `Ralphy: ${task}`;
+
+const buildPrBody = (task: string) => `## Summary\n- ${task}\n`;
+
 type RunPrdDeps = {
   runner?: typeof runSingleTask;
   getNextTask?: typeof getNextTask;
   completeTask?: typeof completeTask;
   branchManagerFactory?: typeof createBranchPerTaskManager;
+  createPullRequest?: typeof createPullRequest;
 };
 
 export const checkPrdRequirements = async (
@@ -164,6 +170,7 @@ export const runPrd = async (
   const runner = deps.runner ?? runSingleTask;
   const nextTask = deps.getNextTask ?? getNextTask;
   const complete = deps.completeTask ?? completeTask;
+  const createPr = deps.createPullRequest ?? createPullRequest;
   const branchManagerFactory = deps.branchManagerFactory ?? createBranchPerTaskManager;
   const branchManager = options.branchPerTask
     ? branchManagerFactory({ cwd, baseBranch: options.baseBranch })
@@ -201,8 +208,9 @@ export const runPrd = async (
       const taskSource = next.task.source;
       iterations += 1;
 
+      let taskBranch: string | undefined;
       if (branchManager) {
-        await branchManager.checkoutForTask(taskText);
+        taskBranch = await branchManager.checkoutForTask(taskText);
       }
 
       let result: Awaited<ReturnType<typeof runSingleTask>>;
@@ -231,6 +239,29 @@ export const runPrd = async (
         completed += 1;
         const completion = await complete(taskText, taskSourceOptions);
         if (completion.status === "updated" || completion.status === "already-complete") {
+          if (options.createPr || options.draftPr) {
+            try {
+              await createPr({
+                cwd,
+                title: buildPrTitle(taskText),
+                body: buildPrBody(taskText),
+                baseBranch: options.baseBranch,
+                headBranch: taskBranch,
+                draft: options.draftPr,
+              });
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "Pull request failed";
+              return {
+                status: "error",
+                stage: "pr",
+                message,
+                iterations,
+                tasks,
+                task: taskText,
+                usage,
+              };
+            }
+          }
           if (iterations >= maxIterations) {
             break;
           }

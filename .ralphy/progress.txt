@@ -22,4 +22,5 @@
 - 2026-01-19: Completed Sprint 5 Task 3 progress logging + usage totals for PRD runs + tests.
 - 2026-01-19: Completed Sprint 5 Task 4 PRD loop control tests for max iterations and retry exhaustion.
 - 2026-01-19: Completed Sprint 6 Task 1 branch-per-task flow with tests.
+- 2026-01-19: Completed Sprint 6 Task 2 create/draft PR flow with gh integration + tests.
 
