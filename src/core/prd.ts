@@ -154,6 +154,9 @@ const ensureMaxIterations = (value?: number) => {
   if (value === undefined) {
     return Number.POSITIVE_INFINITY;
   }
+  if (value === 0) {
+    return Number.POSITIVE_INFINITY;
+  }
   return Math.max(0, value);
 };
 
@@ -749,6 +752,75 @@ export const runPrd = async (
   const usage = createUsageTotals();
   let iterations = 0;
   let completed = 0;
+  const taskSourceOptions = buildTaskSourceOptions(options, cwd);
+  const runner = deps.runner ?? runSingleTask;
+  const nextTask = deps.getNextTask ?? getNextTask;
+  const complete = deps.completeTask ?? completeTask;
+  const createPr = deps.createPullRequest ?? createPullRequest;
+  const branchManagerFactory = deps.branchManagerFactory ?? createBranchPerTaskManager;
+  const taskSourcePath = options.yaml ?? options.prd;
+
+  if (options.dryRun) {
+    const next = await nextTask(taskSourceOptions);
+    if (next.status === "empty") {
+      return {
+        status: "ok",
+        iterations,
+        completed,
+        stopped: "no-tasks",
+        tasks,
+        usage,
+      };
+    }
+    if (next.status === "error") {
+      return {
+        status: "error",
+        stage: "task-source",
+        message: next.error ?? "Task source error",
+        iterations,
+        tasks,
+        usage,
+      };
+    }
+
+    const taskText = next.task.text;
+    const taskSource = next.task.source;
+    const result = await runner({
+      task: taskText,
+      engine: options.engine,
+      skipTests: options.skipTests,
+      skipLint: options.skipLint,
+      autoCommit: options.autoCommit,
+      maxRetries: options.maxRetries,
+      retryDelay: options.retryDelay,
+      promptMode: "prd",
+      taskSource,
+      taskSourcePath,
+      dryRun: true,
+      cwd,
+    });
+
+    if (result.status !== "dry-run") {
+      const message = result.status === "error" ? result.error : "Dry run failed";
+      return {
+        status: "error",
+        stage: "agent",
+        message,
+        iterations,
+        tasks,
+        task: taskText,
+        usage,
+      };
+    }
+
+    return {
+      status: "dry-run",
+      engine: result.engine,
+      prompt: result.prompt,
+      task: taskText,
+      source: taskSource,
+    };
+  }
 
   if (maxIterations === 0) {
     return {
@@ -776,12 +848,6 @@ export const runPrd = async (
     };
   }
 
-  const taskSourceOptions = buildTaskSourceOptions(options, cwd);
-  const runner = deps.runner ?? runSingleTask;
-  const nextTask = deps.getNextTask ?? getNextTask;
-  const complete = deps.completeTask ?? completeTask;
-  const createPr = deps.createPullRequest ?? createPullRequest;
-  const branchManagerFactory = deps.branchManagerFactory ?? createBranchPerTaskManager;
   const branchManager = options.branchPerTask
     ? branchManagerFactory({ cwd, baseBranch: options.baseBranch })
     : null;
@@ -834,6 +900,9 @@ export const runPrd = async (
           autoCommit: options.autoCommit,
           maxRetries: options.maxRetries,
           retryDelay: options.retryDelay,
+          promptMode: "prd",
+          taskSource,
+          taskSourcePath,
           cwd,
         });
       } finally {

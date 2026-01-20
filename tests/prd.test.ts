@@ -187,15 +187,25 @@ const createGitRunner = (options?: {
   return { runner, calls };
 };
 
-test("runPrd stops immediately when max iterations is zero", async () => {
+test("runPrd treats max iterations zero as unlimited", async () => {
   const cwd = await createWorkspace();
   let runnerCalls = 0;
+  let taskCalls = 0;
 
   try {
     await mkdir(join(cwd, ".git"), { recursive: true });
+    await mkdir(join(cwd, ".ralphy"), { recursive: true });
     await Bun.write(join(cwd, "PRD.md"), "- [ ] Task");
+    await Bun.write(join(cwd, ".ralphy", "progress.txt"), "# Ralphy Progress Log\n\n");
 
     const result = await runPrd(createRunOptions(cwd, { maxIterations: 0 }), {
+      getNextTask: async () => {
+        if (taskCalls === 0) {
+          taskCalls += 1;
+          return { status: "ok", task: { source: "markdown", text: "Ship it" } };
+        }
+        return { status: "empty", source: "markdown" };
+      },
       runner: async () => {
         runnerCalls += 1;
         return {
@@ -209,17 +219,26 @@ test("runPrd stops immediately when max iterations is zero", async () => {
           exitCode: 0,
         };
       },
+      completeTask: async () => ({ status: "updated", source: "markdown", task: "Ship it" }),
     });
 
     expect(result).toEqual({
       status: "ok",
-      iterations: 0,
-      completed: 0,
-      stopped: "max-iterations",
-      tasks: [],
-      usage: { inputTokens: 0, outputTokens: 0 },
+      iterations: 1,
+      completed: 1,
+      stopped: "no-tasks",
+      tasks: [
+        {
+          task: "Ship it",
+          source: "markdown",
+          status: "completed",
+          attempts: 1,
+          response: "Done",
+        },
+      ],
+      usage: { inputTokens: 1, outputTokens: 1 },
     });
-    expect(runnerCalls).toBe(0);
+    expect(runnerCalls).toBe(1);
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
@@ -365,10 +384,55 @@ test("runPrd returns error when runner returns dry-run", async () => {
   }
 });
 
+test("runPrd returns dry-run prompt when requested", async () => {
+  const cwd = await createWorkspace();
+  let runnerCalls = 0;
+  let promptMode: string | undefined;
+  let taskSource: string | undefined;
+  let taskSourcePath: string | undefined;
+
+  try {
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    await Bun.write(join(cwd, "PRD.md"), "- [ ] Task");
+
+    const result = await runPrd(createRunOptions(cwd, { dryRun: true }), {
+      getNextTask: async () => ({ status: "ok", task: { source: "markdown", text: "Ship it" } }),
+      runner: async ({ promptMode: mode, taskSource: source, taskSourcePath: path }) => {
+        runnerCalls += 1;
+        promptMode = mode;
+        taskSource = source;
+        taskSourcePath = path;
+        return {
+          status: "dry-run",
+          engine: "claude",
+          prompt: "Prompt",
+        };
+      },
+    });
+
+    expect(result).toEqual({
+      status: "dry-run",
+      engine: "claude",
+      prompt: "Prompt",
+      task: "Ship it",
+      source: "markdown",
+    });
+    expect(runnerCalls).toBe(1);
+    expect(promptMode).toBe("prd");
+    expect(taskSource).toBe("markdown");
+    expect(taskSourcePath).toBe("PRD.md");
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test("runPrd executes tasks sequentially and completes", async () => {
   const cwd = await createWorkspace();
   let taskIndex = 0;
   const completedTasks: PrdRunTask[] = [];
+  const promptModes: Array<string | undefined> = [];
+  const taskSources: Array<string | undefined> = [];
+  const taskSourcePaths: Array<string | undefined> = [];
 
   try {
     await mkdir(join(cwd, ".git"), { recursive: true });
@@ -384,7 +448,10 @@ test("runPrd executes tasks sequentially and completes", async () => {
         }
         return { status: "empty", source: "markdown" };
       },
-      runner: async ({ task }) => {
+      runner: async ({ task, promptMode, taskSource, taskSourcePath }) => {
+        promptModes.push(promptMode);
+        taskSources.push(taskSource);
+        taskSourcePaths.push(taskSourcePath);
         completedTasks.push({
           task,
           source: "markdown",
@@ -417,6 +484,9 @@ test("runPrd executes tasks sequentially and completes", async () => {
     const progress = await Bun.file(join(cwd, ".ralphy", "progress.txt")).text();
     expect(progress).toContain("- [✓]");
     expect(progress).toContain("Ship it");
+    expect(promptModes).toEqual(["prd"]);
+    expect(taskSources).toEqual(["markdown"]);
+    expect(taskSourcePaths).toEqual(["PRD.md"]);
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

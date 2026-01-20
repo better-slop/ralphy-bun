@@ -16,6 +16,7 @@ test("parses core flags", () => {
     "Keep it tight",
     "--skip-tests",
     "--skip-lint",
+    "--fast",
     "--cursor",
     "--parallel",
     "--max-parallel",
@@ -46,6 +47,7 @@ test("parses core flags", () => {
   expect(parsed.addRule).toBe("Keep it tight");
   expect(parsed.skipTests).toBe(true);
   expect(parsed.skipLint).toBe(true);
+  expect(parsed.fast).toBe(true);
   expect(parsed.cursor).toBe(true);
   expect(parsed.parallel).toBe(true);
   expect(parsed.maxParallel).toBe(4);
@@ -131,11 +133,12 @@ const createFakeServer = () => {
   return { server, stopCalls };
 };
 
-test("dispatches dry-run to health endpoint", async () => {
+test("dispatches dry-run to prd endpoint", async () => {
   const { server, stopCalls } = createFakeServer();
   const baseUrl = `http://${server.hostname}:${server.port}`;
   const { fetcher, calls } = createFakeFetch({
     [`${baseUrl}/v1/health`]: { body: { status: "ok" } },
+    [`${baseUrl}/v1/run/prd`]: { body: { result: "dry-run" } },
   });
 
   const result = await runCli(["--dry-run"], {
@@ -144,9 +147,13 @@ test("dispatches dry-run to health endpoint", async () => {
   });
 
   expect(result).not.toBeNull();
-  expect(calls).toHaveLength(1);
+  expect(calls).toHaveLength(2);
   expect(calls[0]?.url).toBe(`${baseUrl}/v1/health`);
-  expect(calls[0]?.init?.method).toBe("GET");
+  expect(calls[1]?.url).toBe(`${baseUrl}/v1/run/prd`);
+  expect(calls[1]?.init?.method).toBe("POST");
+  expect(calls[1]?.init?.body).toBe(
+    JSON.stringify({ prd: "PRD.md", dryRun: true, autoCommit: true }),
+  );
   expect(stopCalls).toHaveLength(1);
 });
 
@@ -173,6 +180,30 @@ test("dispatches positional tasks to single-run endpoint", async () => {
   expect(stopCalls).toHaveLength(1);
 });
 
+test("dispatches dry-run task to single-run endpoint", async () => {
+  const { server, stopCalls } = createFakeServer();
+  const baseUrl = `http://${server.hostname}:${server.port}`;
+  const { fetcher, calls } = createFakeFetch({
+    [`${baseUrl}/v1/health`]: { body: { status: "ok" } },
+    [`${baseUrl}/v1/run/single`]: { body: { result: "prompt" } },
+  });
+
+  const result = await runCli(["ship", "it", "--dry-run"], {
+    createServer: () => server,
+    fetcher,
+  });
+
+  expect(result).not.toBeNull();
+  expect(calls).toHaveLength(2);
+  expect(calls[0]?.url).toBe(`${baseUrl}/v1/health`);
+  expect(calls[1]?.url).toBe(`${baseUrl}/v1/run/single`);
+  expect(calls[1]?.init?.method).toBe("POST");
+  expect(calls[1]?.init?.body).toBe(
+    JSON.stringify({ task: "ship it", dryRun: true, autoCommit: true }),
+  );
+  expect(stopCalls).toHaveLength(1);
+});
+
 test("dispatches prd run when no task is provided", async () => {
   const { server, stopCalls } = createFakeServer();
   const baseUrl = `http://${server.hostname}:${server.port}`;
@@ -194,6 +225,72 @@ test("dispatches prd run when no task is provided", async () => {
   expect(calls[1]?.init?.method).toBe("POST");
   expect(calls[1]?.init?.body).toBe(
     JSON.stringify({ prd: "PRD.md", yaml: "tasks.yaml", autoCommit: true }),
+  );
+  expect(stopCalls).toHaveLength(1);
+});
+
+test("dispatches default prd when no args", async () => {
+  const { server, stopCalls } = createFakeServer();
+  const baseUrl = `http://${server.hostname}:${server.port}`;
+  const { fetcher, calls } = createFakeFetch({
+    [`${baseUrl}/v1/health`]: { body: { status: "ok" } },
+    [`${baseUrl}/v1/run/prd`]: { body: { result: "queued" } },
+  });
+
+  const result = await runCli([], {
+    createServer: () => server,
+    fetcher,
+  });
+
+  expect(result).not.toBeNull();
+  expect(calls).toHaveLength(2);
+  expect(calls[0]?.url).toBe(`${baseUrl}/v1/health`);
+  expect(calls[1]?.url).toBe(`${baseUrl}/v1/run/prd`);
+  expect(calls[1]?.init?.method).toBe("POST");
+  expect(calls[1]?.init?.body).toBe(JSON.stringify({ prd: "PRD.md", autoCommit: true }));
+  expect(stopCalls).toHaveLength(1);
+});
+
+test("dispatches fast flags for single runs", async () => {
+  const { server, stopCalls } = createFakeServer();
+  const baseUrl = `http://${server.hostname}:${server.port}`;
+  const { fetcher, calls } = createFakeFetch({
+    [`${baseUrl}/v1/health`]: { body: { status: "ok" } },
+    [`${baseUrl}/v1/run/single`]: { body: { result: "done" } },
+  });
+
+  const result = await runCli(["ship", "it", "--fast"], {
+    createServer: () => server,
+    fetcher,
+  });
+
+  expect(result).not.toBeNull();
+  expect(calls).toHaveLength(2);
+  expect(calls[1]?.url).toBe(`${baseUrl}/v1/run/single`);
+  expect(calls[1]?.init?.body).toBe(
+    JSON.stringify({ task: "ship it", skipTests: true, skipLint: true, autoCommit: true }),
+  );
+  expect(stopCalls).toHaveLength(1);
+});
+
+test("dispatches fast flags for prd runs", async () => {
+  const { server, stopCalls } = createFakeServer();
+  const baseUrl = `http://${server.hostname}:${server.port}`;
+  const { fetcher, calls } = createFakeFetch({
+    [`${baseUrl}/v1/health`]: { body: { status: "ok" } },
+    [`${baseUrl}/v1/run/prd`]: { body: { result: "queued" } },
+  });
+
+  const result = await runCli(["--fast"], {
+    createServer: () => server,
+    fetcher,
+  });
+
+  expect(result).not.toBeNull();
+  expect(calls).toHaveLength(2);
+  expect(calls[1]?.url).toBe(`${baseUrl}/v1/run/prd`);
+  expect(calls[1]?.init?.body).toBe(
+    JSON.stringify({ prd: "PRD.md", skipTests: true, skipLint: true, autoCommit: true }),
   );
   expect(stopCalls).toHaveLength(1);
 });

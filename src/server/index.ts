@@ -159,6 +159,7 @@ const createHandler = (
         maxIterations: body.maxIterations,
         maxRetries: body.maxRetries,
         retryDelay: body.retryDelay,
+        dryRun: body.dryRun,
         parallel: body.parallel,
         maxParallel: body.maxParallel,
         branchPerTask: body.branchPerTask,

@@ -129,6 +129,7 @@ export type RunPrdRequest = {
   maxIterations?: number;
   maxRetries?: number;
   retryDelay?: number;
+  dryRun?: boolean;
   parallel?: boolean;
   maxParallel?: number;
   branchPerTask?: boolean;
@@ -170,6 +171,14 @@ export type RunPrdSuccess = {
   usage: AgentUsageTotals;
 };
 
+export type RunPrdDryRun = {
+  status: "dry-run";
+  engine: AgentEngine;
+  prompt: string;
+  task: string;
+  source: TaskSource;
+};
+
 export type RunPrdFailure =
   | { status: "error"; failures: PrdRequirementFailure[]; usage?: AgentUsageTotals }
   | {
@@ -182,7 +191,7 @@ export type RunPrdFailure =
       usage: AgentUsageTotals;
     };
 
-export type RunPrdResponse = RunPrdSuccess | RunPrdFailure;
+export type RunPrdResponse = RunPrdSuccess | RunPrdFailure | RunPrdDryRun;
 
 export type TasksNextQuery = {
   prd?: string;

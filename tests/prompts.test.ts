@@ -75,6 +75,23 @@ test("builds deterministic prompt snapshot", async () => {
   expect(normalized).toMatchSnapshot();
 });
 
+test("builds prd prompt with default context", async () => {
+  const prompt = await buildSingleTaskPrompt({
+    task: "Ship it",
+    cwd: workingDir,
+    promptMode: "prd",
+  });
+
+  expect(prompt).toContain("@PRD.md");
+  expect(prompt).toContain("@.ralphy/progress.txt");
+  expect(prompt).toContain("Find the highest-priority incomplete task and implement it.");
+  expect(prompt).toContain(
+    "Update the PRD to mark the task as complete (change '- [ ]' to '- [x]').",
+  );
+  expect(prompt).toContain("Commit your changes with a descriptive message.");
+  expect(prompt).toContain("ONLY WORK ON A SINGLE TASK.");
+});
+
 test("omits test, lint, and commit steps when disabled", async () => {
   await writeConfig(workingDir, "project:\n  name: Demo\n");
   await writeProgress(workingDir);

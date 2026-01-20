@@ -175,9 +175,19 @@ const selectEngine = (args: CliArgs): AgentEngine | undefined => {
   return undefined;
 };
 
-const resolveSkipTests = (args: CliArgs) => args.skipTests ?? args.noTests;
+const resolveSkipTests = (args: CliArgs) => (args.fast ? true : args.skipTests ?? args.noTests);
 
-const resolveSkipLint = (args: CliArgs) => args.skipLint ?? args.noLint;
+const resolveSkipLint = (args: CliArgs) => (args.fast ? true : args.skipLint ?? args.noLint);
+
+const resolvePrdPath = (args: CliArgs) => {
+  if (args.prd) {
+    return args.prd;
+  }
+  if (args.yaml || args.github) {
+    return undefined;
+  }
+  return "PRD.md";
+};
 
 type DispatchResult = {
   target: DispatchTarget;
@@ -209,10 +219,6 @@ const isHelpOrVersion = (args: string[]) =>
   args.includes("--help") || args.includes("-h") || args.includes("--version");
 
 const selectDispatchTarget = (args: CliArgs): DispatchTarget => {
-  if (args.dryRun) {
-    return { method: "GET", path: "/v1/health" };
-  }
-
   if (args.init) {
     return { method: "POST", path: "/v1/config/init" };
   }
@@ -237,6 +243,7 @@ const selectDispatchTarget = (args: CliArgs): DispatchTarget => {
       engine: selectEngine(args),
       skipTests: resolveSkipTests(args),
       skipLint: resolveSkipLint(args),
+      dryRun: args.dryRun,
       autoCommit: args.commit,
       maxRetries: args.maxRetries,
       retryDelay: args.retryDelay,
@@ -245,13 +252,14 @@ const selectDispatchTarget = (args: CliArgs): DispatchTarget => {
   }
 
   const body: RunPrdRequest = {
-    prd: args.prd,
+    prd: resolvePrdPath(args),
     yaml: args.yaml,
     github: args.github,
     githubLabel: args.githubLabel,
     maxIterations: args.maxIterations,
     maxRetries: args.maxRetries,
     retryDelay: args.retryDelay,
+    dryRun: args.dryRun,
     parallel: args.parallel,
     maxParallel: args.maxParallel,
     branchPerTask: args.branchPerTask,
