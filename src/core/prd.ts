@@ -461,6 +461,9 @@ const runParallelGroup = async (
       autoCommit: options.autoCommit,
       maxRetries: options.maxRetries,
       retryDelay: options.retryDelay,
+      promptMode: "prd",
+      taskSource: task.source,
+      taskSourcePath: options.yaml ?? options.prd,
       cwd: record.path,
     });
 

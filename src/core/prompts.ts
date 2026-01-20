@@ -1,13 +1,18 @@
 import { join } from "node:path";
+import type { PromptMode, TaskSource } from "../shared/types";
 
 export type PromptConfig = {
-  task: string;
+  task?: string;
   cwd?: string;
   configPath?: string;
   progressPath?: string;
   skipTests?: boolean;
   skipLint?: boolean;
   autoCommit?: boolean;
+  promptMode?: PromptMode;
+  taskSource?: TaskSource;
+  taskSourcePath?: string;
+  issueBody?: string;
 };
 
 type ProjectContext = {
@@ -205,13 +210,131 @@ const formatInstructions = (
   return `## Instructions\n${lines.join("\n")}`;
 };
 
+const resolveTaskSource = (options: PromptConfig, cwd: string, useRelativeDefaults: boolean) => {
+  const taskSource = options.taskSource ?? "markdown";
+  if (taskSource === "github") {
+    return { taskSource, taskSourcePath: undefined } as const;
+  }
+  const defaultFile = taskSource === "yaml" ? "tasks.yaml" : "PRD.md";
+  const taskSourcePath = options.taskSourcePath ?? (useRelativeDefaults ? defaultFile : join(cwd, defaultFile));
+  return { taskSource, taskSourcePath } as const;
+};
+
+const formatPrdInstructions = (options: {
+  taskSource: TaskSource;
+  taskSourcePath?: string;
+  progressPath: string;
+  skipTests: boolean;
+  skipLint: boolean;
+}) => {
+  const lines: string[] = [];
+  let step = 1;
+
+  lines.push(`${step}. Find the highest-priority incomplete task and implement it.`);
+  step += 1;
+
+  if (!options.skipTests) {
+    lines.push(`${step}. Write tests for the feature.`);
+    step += 1;
+    lines.push(`${step}. Run tests and ensure they pass before proceeding.`);
+    step += 1;
+  }
+
+  if (!options.skipLint) {
+    lines.push(`${step}. Run linting and ensure it passes before proceeding.`);
+    step += 1;
+  }
+
+  if (options.taskSource === "yaml") {
+    lines.push(
+      `${step}. Update ${options.taskSourcePath ?? "tasks.yaml"} to mark the task as completed (set completed: true).`,
+    );
+  } else if (options.taskSource === "github") {
+    lines.push(
+      `${step}. The task will be marked complete automatically. Just note the completion in ${options.progressPath}.`,
+    );
+  } else {
+    lines.push(
+      `${step}. Update the PRD to mark the task as complete (change '- [ ]' to '- [x]').`,
+    );
+  }
+  step += 1;
+
+  lines.push(`${step}. Append your progress to ${options.progressPath}.`);
+  step += 1;
+  lines.push(`${step}. Commit your changes with a descriptive message.`);
+  lines.push("ONLY WORK ON A SINGLE TASK.");
+  if (!options.skipTests) {
+    lines.push("Do not proceed if tests fail.");
+  }
+  if (!options.skipLint) {
+    lines.push("Do not proceed if linting fails.");
+  }
+  lines.push("If ALL tasks in the PRD are complete, output <promise>COMPLETE</promise>.");
+
+  return lines.join("\n");
+};
+
+const formatPrdContext = (options: {
+  taskSource: TaskSource;
+  taskSourcePath?: string;
+  progressPath: string;
+  task?: string;
+  issueBody?: string;
+}) => {
+  if (options.taskSource === "github") {
+    const title = options.task ?? "";
+    const body = options.issueBody ?? "";
+    return [
+      `Task from GitHub Issue: ${title}`,
+      "",
+      "Issue Description:",
+      body,
+      "",
+      `@${options.progressPath}`,
+    ].join("\n");
+  }
+
+  const parts = [] as string[];
+  if (options.taskSourcePath) {
+    parts.push(`@${options.taskSourcePath}`);
+  }
+  parts.push(`@${options.progressPath}`);
+  return parts.join(" ");
+};
+
 export const buildSingleTaskPrompt = async (options: PromptConfig): Promise<string> => {
   const cwd = options.cwd ?? process.cwd();
   const configPath = options.configPath ?? join(cwd, ".ralphy", "config.yaml");
-  const progressPath = options.progressPath ?? join(cwd, ".ralphy", "progress.txt");
+  const promptMode = options.promptMode ?? "single";
+  const progressPath =
+    options.progressPath ?? (promptMode === "prd" ? ".ralphy/progress.txt" : join(cwd, ".ralphy", "progress.txt"));
   const skipTests = options.skipTests ?? false;
   const skipLint = options.skipLint ?? false;
   const autoCommit = options.autoCommit ?? true;
+
+  if (promptMode === "prd") {
+    const { taskSource, taskSourcePath } = resolveTaskSource(options, cwd, true);
+    const context = formatPrdContext({
+      taskSource,
+      taskSourcePath,
+      progressPath,
+      task: options.task,
+      issueBody: options.issueBody,
+    });
+    const instructions = formatPrdInstructions({
+      taskSource,
+      taskSourcePath,
+      progressPath,
+      skipTests,
+      skipLint,
+    });
+    return `${context}\n${instructions}\n`;
+  }
+
+  if (!options.task || options.task.trim().length === 0) {
+    throw new Error("Task is required for single-task prompts");
+  }
 
   const config = await readConfig(configPath);
   const sections: string[] = [];

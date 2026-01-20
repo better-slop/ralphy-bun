@@ -76,6 +76,10 @@ export type ErrorResponse = {
   error: string;
 };
 
+export type TaskSource = "markdown" | "yaml" | "github";
+
+export type PromptMode = "single" | "prd";
+
 export type RunSingleRequest = {
   task: string;
   engine?: AgentEngine;
@@ -85,6 +89,10 @@ export type RunSingleRequest = {
   dryRun?: boolean;
   maxRetries?: number;
   retryDelay?: number;
+  promptMode?: PromptMode;
+  taskSource?: TaskSource;
+  taskSourcePath?: string;
+  issueBody?: string;
 };
 
 export type RunSingleResponse =
@@ -112,8 +120,6 @@ export type RunSingleResponse =
       engine: AgentEngine;
       prompt: string;
     };
-
-export type TaskSource = "markdown" | "yaml" | "github";
 
 export type RunPrdRequest = {
   prd?: string;

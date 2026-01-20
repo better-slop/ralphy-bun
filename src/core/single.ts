@@ -254,6 +254,10 @@ export const runSingleTask = async (
     skipTests: options.skipTests,
     skipLint: options.skipLint,
     autoCommit: options.autoCommit,
+    promptMode: options.promptMode,
+    taskSource: options.taskSource,
+    taskSourcePath: options.taskSourcePath,
+    issueBody: options.issueBody,
   });
 
   if (options.dryRun) {
